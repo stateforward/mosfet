@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Point a bot at the collector and open the printed URL:
+Point a bot at the collector and open `/workshop.html` at the printed URL (`/` is the mosfet.bot homepage, `/face.html` tunes the bot character):
 
 ```sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317

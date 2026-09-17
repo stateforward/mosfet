@@ -18,6 +18,11 @@ function otelCollectorPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [otelCollectorPlugin()],
+  build: {
+    rollupOptions: {
+      input: { site: "index.html", workshop: "workshop.html", face: "face.html" },
+    },
+  },
   server: {
     port: 5173,
   },

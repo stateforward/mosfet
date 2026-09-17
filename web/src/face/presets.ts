@@ -36,20 +36,22 @@ export type EyeShape = {
   readonly topTilt: number;
   readonly bottomTilt: number;
   readonly skew: number;
+  /** Corner radius as a fraction of the eye's smaller side; 0.5 is fully round. */
+  readonly roundness: number;
 };
 
 export const EYE_SHAPES: Record<EyeShapeName, EyeShape> = {
-  normal: { openness: 0.86, width: 0.68, height: 0.58, topTilt: 0, bottomTilt: 0, skew: 0 },
-  happy: { openness: 0.44, width: 0.7, height: 0.46, topTilt: -0.14, bottomTilt: 0.18, skew: 0 },
-  worried: { openness: 0.62, width: 0.68, height: 0.52, topTilt: 0.18, bottomTilt: -0.08, skew: 0.04 },
-  worriedAlt: { openness: 0.62, width: 0.68, height: 0.52, topTilt: -0.18, bottomTilt: 0.08, skew: -0.04 },
-  focused: { openness: 0.52, width: 0.74, height: 0.42, topTilt: 0, bottomTilt: 0, skew: 0 },
-  sleepy: { openness: 0.34, width: 0.72, height: 0.36, topTilt: -0.05, bottomTilt: 0.1, skew: 0 },
-  sleepyAlt: { openness: 0.34, width: 0.72, height: 0.36, topTilt: 0.05, bottomTilt: -0.1, skew: 0 },
-  angry: { openness: 0.5, width: 0.74, height: 0.42, topTilt: 0.22, bottomTilt: -0.08, skew: 0 },
-  surprised: { openness: 1, width: 0.64, height: 0.76, topTilt: 0, bottomTilt: 0, skew: 0 },
-  skeptic: { openness: 0.5, width: 0.72, height: 0.44, topTilt: -0.18, bottomTilt: 0.06, skew: -0.04 },
-  skepticAlt: { openness: 0.5, width: 0.72, height: 0.44, topTilt: 0.18, bottomTilt: -0.06, skew: 0.04 },
+  normal: { openness: 1, width: 0.62, height: 0.78, topTilt: 0, bottomTilt: 0, skew: 0, roundness: 0.34 },
+  happy: { openness: 1, width: 0.7, height: 0.34, topTilt: 0, bottomTilt: -0.35, skew: 0, roundness: 0.5 },
+  worried: { openness: 1, width: 0.62, height: 0.62, topTilt: -0.3, bottomTilt: 0, skew: 0.02, roundness: 0.3 },
+  worriedAlt: { openness: 1, width: 0.62, height: 0.58, topTilt: -0.24, bottomTilt: 0, skew: -0.02, roundness: 0.3 },
+  focused: { openness: 1, width: 0.72, height: 0.4, topTilt: 0.06, bottomTilt: 0, skew: 0, roundness: 0.28 },
+  sleepy: { openness: 1, width: 0.66, height: 0.24, topTilt: 0.04, bottomTilt: 0, skew: 0, roundness: 0.45 },
+  sleepyAlt: { openness: 1, width: 0.66, height: 0.3, topTilt: 0.08, bottomTilt: 0, skew: 0, roundness: 0.45 },
+  angry: { openness: 1, width: 0.68, height: 0.56, topTilt: 0.32, bottomTilt: 0, skew: 0, roundness: 0.22 },
+  surprised: { openness: 1, width: 0.84, height: 0.84, topTilt: 0, bottomTilt: 0, skew: 0, roundness: 0.5 },
+  skeptic: { openness: 1, width: 0.66, height: 0.34, topTilt: 0.1, bottomTilt: 0, skew: 0, roundness: 0.3 },
+  skepticAlt: { openness: 1, width: 0.62, height: 0.76, topTilt: -0.08, bottomTilt: 0, skew: 0, roundness: 0.34 },
 };
 
 /** An expression is an asymmetric pair: the two eyes are rarely the same shape. */
@@ -90,6 +92,7 @@ export function blendShape(from: EyeShape, to: EyeShape, t: number): EyeShape {
     topTilt: from.topTilt + (to.topTilt - from.topTilt) * k,
     bottomTilt: from.bottomTilt + (to.bottomTilt - from.bottomTilt) * k,
     skew: from.skew + (to.skew - from.skew) * k,
+    roundness: from.roundness + (to.roundness - from.roundness) * k,
   };
 }
 
