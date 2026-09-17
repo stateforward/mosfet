@@ -1,0 +1,3 @@
+[submodule "mosfet.py"]
+	path = mosfet.py
+	url = git@github.com:stateforward/mosfet.py.git

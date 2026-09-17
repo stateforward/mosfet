@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test-results/
+test-results-isolated/
+playwright-report/
+.DS_Store
+*.log
+otel-logs.jsonl
+otel-spans.jsonl
