@@ -81,12 +81,16 @@ export type CritterFrame = {
   readonly pupil: CanvasPaint;
   /** Tire color: its own shade of `ink`, distinct from the pupil. */
   readonly tire: CanvasPaint;
+  /** Wheel arm color. */
+  readonly arm: CanvasPaint;
   /** Radians the bot has turned; 0 faces the viewer. */
   readonly heading: number;
   /** Position across the box, -1..1. */
   readonly x: number;
   /** Wheel rotation in radians, for the spokes and tread. */
   readonly wheel: number;
+  /** Current side-arm swing in degrees (animated; the geometry value is its resting splay). */
+  readonly swing: number;
   readonly geometry: CritterGeometry;
 };
 
@@ -94,7 +98,8 @@ export type CritterFrame = {
  * Tunable proportions, each a fraction of the box's unit size (its height, or
  * width / 1.15 if that is smaller). `stalkSpread` is how far apart the stalk
  * roots sit, as a fraction of drum length. The eye stalks grow out of the
- * drum's top front, and a wheel mounts low on each end cap.
+ * drum's top front. The two side wheels ride on arms that pivot high on the
+ * drum's centerline and swing out forward or back.
  */
 export type CritterGeometry = {
   readonly wheelRadius: number;
@@ -110,8 +115,16 @@ export type CritterGeometry = {
   readonly drumCornerRadius: number;
   /** Drum length between its end caps, which is its width from the front. */
   readonly shellLength: number;
-  /** How far below the drum's center the wheel hubs sit, as a fraction of drum radius. */
-  readonly wheelDrop: number;
+  /** Degrees the side wheel arms swing forward from straight down (negative swings back). */
+  readonly armSwing: number;
+  /** Side arm length from its pivot to the wheel hub, as a fraction of drum radius. */
+  readonly armLength: number;
+  /** Arm mount height on the drum, as a fraction of drum radius: 1 top edge, 0 center, -1 bottom edge. */
+  readonly armPivot: number;
+  /** Arm corner radius, as a fraction of half the arm's width: 0 square, 1 fully round ends. */
+  readonly armCornerRadius: number;
+  /** Side arm thickness. */
+  readonly armWidth: number;
   readonly stalkLength: number;
   readonly stalkWidth: number;
   readonly stalkSpread: number;
@@ -126,7 +139,11 @@ export const DEFAULT_GEOMETRY: CritterGeometry = {
   shellSize: 0.165,
   shellLength: 0.21,
   drumCornerRadius: 0.25,
-  wheelDrop: 0.63,
+  armSwing: 50,
+  armLength: 1.56,
+  armPivot: 0.38,
+  armWidth: 0.112,
+  armCornerRadius: 0.98,
   stalkLength: 0.34,
   stalkWidth: 0.034,
   stalkSpread: 0.26,
@@ -157,14 +174,16 @@ export type CritterHits = {
 };
 
 /**
- * Draw the bot: a drum (a cylinder on its side) on two wheels, with two eye
- * stalks growing out of its top.
+ * Draw the bot: a drum (a cylinder on its side) held up by two wheels on
+ * swinging arms, with two eye stalks growing out of its top.
  *
- * From the front the drum is a wide bar; side-on it is a circle with a wheel
- * overlapping its lower edge. In between, its silhouette is a bar of length
- * `L·|cos|` with elliptical end caps `R·|sin|` wide, which is what a real
- * cylinder looks like as it turns. Wheels mount low on the end caps; whatever
- * is farther away is drawn first.
+ * The side wheels ride on wide arms that pivot high on the drum's centerline
+ * and swing out forward or back. They hold the drum up, so swinging the arms out lowers
+ * it and tucking them in raises it.
+ *
+ * From the front the drum is a rounded bar; side-on it is a circle. Its
+ * silhouette swings between the two as the bot turns, and whatever is farther
+ * away is drawn first.
  */
 export function drawCritter(
   ctx: CanvasRenderingContext2D,
@@ -178,25 +197,65 @@ export function drawCritter(
   const tireHalf = (wheelR * clamp(g.wheelThickness, 0.2, 2)) / 2;
   const drumR = unit * g.shellSize;
   const halfLen = (unit * g.shellLength) / 2;
+  const armW = Math.max(1, unit * g.armWidth);
   const facing = Math.cos(frame.heading);
   const sideways = Math.sin(frame.heading);
   const ground = height - unit * 0.02;
-  const axleY = ground - wheelR;
-  // Hubs sit low on the end caps; the drum rides above them but never sinks below the ground.
-  const drumY = Math.min(axleY - drumR * clamp(g.wheelDrop, 0, 1), ground - drumR);
+  const swing = (clamp(frame.swing, -80, 80) * Math.PI) / 180;
+  // The side wheels stand on the ground and hold the drum up at the end of their arms.
+  const hubY = ground - wheelR;
+  const armLen = drumR * clamp(g.armLength, 0.2, 2);
+  // Arms pivot high on the drum's centerline, so they are long and swing through a wide arc.
+  const pivotRise = drumR * clamp(g.armPivot, -1, 1);
+  // The drum rides as high as its arms hold it, but never sinks into the ground.
+  const drumY = Math.min(hubY - armLen * Math.cos(swing) + pivotRise, ground - drumR);
+  const pivotY = drumY - pivotRise;
+  const reachForward = Math.sin(swing) * armLen;
   const stalkMax = unit * g.stalkLength;
   const eyeR = unit * g.eyeRadius;
 
   // Keep the whole bot in its box at the ends of a roll.
-  const sideReach = halfLen + tireHalf + wheelR * 0.5;
-  // Eyes lean out past the drum toward the direction of travel, so leave room for them.
-  const reachX = Math.max(drumR * 0.5 + eyeR * 1.8 + stalkMax * 0.3, drumR, sideReach);
+  const sideReach = halfLen + armW * 0.45 + tireHalf * 2;
+  const reachX = Math.max(
+    drumR * 0.5 + eyeR * 1.8 + stalkMax * 0.3,
+    drumR + Math.abs(reachForward) + wheelR,
+    sideReach,
+  );
   const cx = width / 2 + clamp(frame.x, -1, 1) * Math.max(0, width / 2 - reachX);
 
-  const wheels = [-1, 1].map((side) => ({ x: cx + side * (halfLen + tireHalf) * facing, depth: side * sideways }));
-  // A wheel only goes behind the drum once the bot has turned well away from us.
+  // Each arm is a plate mounted just outside the drum's end cap, and its wheel mounts outside the arm.
+  const plate = armW * 0.45;
+  const sides = [-1, 1].map((side) => {
+    const armOut = side * (halfLen + plate / 2) * facing;
+    const wheelOut = side * (halfLen + plate + tireHalf) * facing;
+    return {
+      pivotX: cx + armOut,
+      armX: cx + armOut + reachForward * sideways,
+      x: cx + wheelOut + reachForward * sideways,
+      depth: side * sideways,
+    };
+  });
+  // A side wheel only goes behind the drum once the bot has turned well away from us.
   const behind = (w: { depth: number }): boolean => w.depth < -0.55;
-  for (const w of wheels) if (behind(w)) drawWheel(ctx, w.x, axleY, wheelR, sideways, frame);
+  const drawSide = (w: (typeof sides)[number]): void => {
+    // Edge-on from the front the arm is a thin plate; side-on it opens up to its full width.
+    // A rounded bar from pivot to hub, drawn along its own axis so the corners round the bar's ends.
+    const barW = plate + (armW - plate) * Math.abs(sideways);
+    const dx = w.armX - w.pivotX;
+    const dy = hubY - pivotY;
+    const len = Math.hypot(dx, dy);
+    ctx.save();
+    ctx.translate(w.pivotX, pivotY);
+    ctx.rotate(Math.atan2(dy, dx) - Math.PI / 2);
+    ctx.fillStyle = frame.arm;
+    ctx.beginPath();
+    // Ends extend half a width past the pivot and hub so the rounding wraps them instead of cutting them short.
+    ctx.roundRect(-barW / 2, -barW / 2, barW, len + barW, (barW / 2) * clamp(g.armCornerRadius, 0, 1));
+    ctx.fill();
+    ctx.restore();
+    drawWheel(ctx, w.x, hubY, wheelR, sideways, frame);
+  };
+  for (const w of sides) if (behind(w)) drawSide(w);
 
   const stalks = (["left", "right"] as const).map((side) => {
     const out = side === "left" ? -1 : 1;
@@ -247,7 +306,7 @@ export function drawCritter(
     drawDrum();
   }
 
-  for (const w of wheels) if (!behind(w)) drawWheel(ctx, w.x, axleY, wheelR, sideways, frame);
+  for (const w of sides) if (!behind(w)) drawSide(w);
 
   const hitOf = (index: number) => ({ x: stalks[index]!.tip.x, y: stalks[index]!.tip.y, r: eyeR });
   const hits: CritterHits = {
@@ -274,10 +333,11 @@ function drawWheel(
   r: number,
   sideways: number,
   frame: CritterFrame,
+  thickness?: number,
 ): void {
   const g = frame.geometry;
   const open = Math.abs(sideways);
-  const edge = r * clamp(g.wheelThickness, 0.2, 2);
+  const edge = r * clamp(thickness ?? g.wheelThickness, 0.2, 6);
   // Width swings from the tire's thickness to the full diameter as it turns toward us.
   const w = edge + (r * 2 - edge) * open;
   const h = r * 2;

@@ -73,7 +73,11 @@
     ["shellSize", "drum radius", 0.1, 0.35, 0.005],
     ["drumCornerRadius", "drum corner radius", 0, 1, 0.02],
     ["shellLength", "drum length", 0.1, 0.7, 0.01],
-    ["wheelDrop", "wheel drop", 0, 1, 0.01],
+    ["armSwing", "arm swing", -80, 80, 1],
+    ["armLength", "arm length", 0.3, 2.5, 0.01],
+    ["armPivot", "arm mount y", -1, 1, 0.01],
+    ["armWidth", "arm width", 0.01, 0.25, 0.002],
+    ["armCornerRadius", "arm corner radius", 0, 1, 0.02],
     ["wheelRadius", "wheel size", 0.06, 0.25, 0.005],
     ["wheelThickness", "wheel thickness", 0.3, 1.8, 0.05],
     ["wheelRoundness", "wheel roundness", 0, 1, 0.05],
@@ -84,6 +88,7 @@
     ["eyeRadius", "eye size", 0.05, 0.2, 0.005],
     ["pupilShade", "pupil darkness", 0, 0.8, 0.05],
     ["tireShade", "wheel darkness", 0, 0.9, 0.05],
+    ["armShade", "arm darkness", 0, 1, 0.05],
   ];
   const critters = () => document.querySelectorAll("bot-critter");
   const tuner = document.getElementById("tuner");

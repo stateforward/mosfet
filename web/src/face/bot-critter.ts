@@ -56,7 +56,7 @@ const motion = (): StalkMotion => ({
  */
 export class BotCritterElement extends hsm.from(HTMLElement) {
   static get observedAttributes(): string[] {
-    return ["expression", "ink", "eye", "pupil", "tire"];
+    return ["expression", "ink", "eye", "pupil", "tire", "arm"];
   }
 
   static readonly shownEvent = { name: "critter.shown", kind: hsm.Kinds.Event } as const;
@@ -116,9 +116,12 @@ export class BotCritterElement extends hsm.from(HTMLElement) {
   #heading: Spring = { value: 0, velocity: 0 };
   #x: Spring = { value: 0, velocity: 0 };
   #wheel = 0;
+  #swing: Spring = { value: 0, velocity: 0 };
   #geometry: CritterGeometry = DEFAULT_GEOMETRY;
   #pupilShade = 0.25;
   #tireShade = 0.5;
+  #armShade = 0.62;
+  #arm: CanvasPaint = shade("#141414", 0.62);
   #tire: CanvasPaint = shade("#141414", 0.5);
   #ink: CanvasPaint = "#141414";
   #eye: CanvasPaint = "#f7f3ea";
@@ -228,20 +231,21 @@ export class BotCritterElement extends hsm.from(HTMLElement) {
   }
 
   /** Current proportions and pupil shade, for tuning tools. */
-  get tuning(): CritterGeometry & { readonly pupilShade: number; readonly tireShade: number } {
-    return { ...this.#geometry, pupilShade: this.#pupilShade, tireShade: this.#tireShade };
+  get tuning(): CritterGeometry & { readonly pupilShade: number; readonly tireShade: number; readonly armShade: number } {
+    return { ...this.#geometry, pupilShade: this.#pupilShade, tireShade: this.#tireShade, armShade: this.#armShade };
   }
 
   /**
    * Adjust proportions live. Presentation only: unknown keys and non-finite
    * values are ignored, so a tuning panel can pass its form state straight in.
    */
-  tune(changes: Partial<CritterGeometry & { pupilShade: number; tireShade: number }>): void {
+  tune(changes: Partial<CritterGeometry & { pupilShade: number; tireShade: number; armShade: number }>): void {
     const next: Record<string, number> = { ...this.#geometry };
     for (const [key, value] of Object.entries(changes)) {
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       if (key === "pupilShade") this.#pupilShade = Math.max(0, Math.min(1, value));
       else if (key === "tireShade") this.#tireShade = Math.max(0, Math.min(1, value));
+      else if (key === "armShade") this.#armShade = Math.max(0, Math.min(1, value));
       else if (key in DEFAULT_GEOMETRY) next[key] = value;
     }
     this.#geometry = next as CritterGeometry;
@@ -308,6 +312,7 @@ export class BotCritterElement extends hsm.from(HTMLElement) {
     this.#eye = this.getAttribute("eye") ?? "#f7f3ea";
     this.#pupil = this.getAttribute("pupil") ?? shade(this.#ink, this.#pupilShade);
     this.#tire = this.getAttribute("tire") ?? shade(this.#ink, this.#tireShade);
+    this.#arm = this.getAttribute("arm") ?? shade(this.#ink, this.#armShade);
   }
 
   #schedule(): void {
@@ -353,11 +358,13 @@ export class BotCritterElement extends hsm.from(HTMLElement) {
       heading: this.#heading.value,
       x: this.#x.value,
       wheel: this.#wheel,
+      swing: this.#swing.value,
       geometry: this.#geometry,
       ink: this.#ink,
       eye: this.#eye,
       pupil: this.#pupil,
       tire: this.#tire,
+      arm: this.#arm,
     });
   }
 
@@ -398,6 +405,9 @@ export class BotCritterElement extends hsm.from(HTMLElement) {
     const drive = this.#drive;
     stepSpring(this.#heading, drive?.heading ?? 0, 0.045, 0.84);
     stepSpring(this.#x, drive?.x ?? 0, 0.03, 0.86);
+    // Standing still, the side arms splay forward to plant a tripod; on the move they trail back a little.
+    const moving = /\/(rolling|spinning)$/.test(drive?.state() ?? "");
+    stepSpring(this.#swing, moving ? -this.#geometry.armSwing * 0.35 : this.#geometry.armSwing, 0.05, 0.82);
     // Rolling turns the wheels forward; spinning in place turns them too.
     this.#wheel += this.#x.velocity * 9 + this.#heading.velocity * 2.2;
   }
