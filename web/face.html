@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bot-face</title>
+<style>
+  body { background:#0d1117; color:#c9d1d9; font:14px system-ui; display:grid; gap:2rem; place-items:center; min-height:100vh; }
+  bot-face { block-size:8rem; inline-size:17rem; }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center; }
+  button { background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:.4rem .7rem; cursor:pointer; }
+  code { color:#26d1a2; }
+</style>
+<bot-face expression="normal"></bot-face>
+<div class="row" id="expressions"></div>
+<div class="row">
+  <button data-do="blink">blink</button>
+  <button data-do="sleep">sleep</button>
+  <button data-do="wake">wake</button>
+</div>
+<code id="state"></code>
+<script type="module">
+  import { defineBotFaceElement } from "/src/face/index.ts";
+  defineBotFaceElement();
+  const face = document.querySelector("bot-face");
+  for (const name of ["normal","happy","worried","focused","sleepy","angry","surprised","skeptic"]) {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.onclick = () => face.express(name);
+    document.getElementById("expressions").append(b);
+  }
+  for (const b of document.querySelectorAll("[data-do]")) b.onclick = () => face[b.dataset.do]();
+  setInterval(() => { document.getElementById("state").textContent = face.faceState(); }, 100);
+</script>
