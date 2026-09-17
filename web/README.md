@@ -1,13 +1,17 @@
 # web
 
-Watch a bot think.
+The workshop.
 
-This is a dashboard that draws the live state machines inside a running bot: which machines
-exist, what state each one is in, what event moved it there, and what it did next. You can
-click an edge and fire that event back at the bot.
+This is where bots get made, run, watched, poked, broken, and fixed. You build one here,
+you ring it here, you watch what it did here, and when it does the wrong thing you correct
+it here. Same surface for all of it, whether the one doing the correcting is you or mosfet.
 
-It reads one thing only: `bot.hsm.observe` spans, exported over OTLP. No bot topology is
-hard-coded here. Whatever the bot is, the graph is whatever it reports.
+A bot is a live thing, not a build artifact. So the workshop is not a deploy target with a
+log viewer bolted on. It is the room the bot is in.
+
+> **Today it does the watching part.** Live topology, live state, live events, and sending
+> an event back at a running bot. The rest of what is described below is being built. This
+> file says where it is going so the shape is clear; it does not pretend to have arrived.
 
 ## Run it
 
@@ -22,7 +26,32 @@ Point a bot at the collector and open the printed URL:
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317
 ```
 
-Spans appear as the bot emits them.
+Machines appear as the bot emits them.
+
+## What the workshop is for
+
+**Make one.** Describe the bot you want. It gets assembled from abilities, devices, and
+providers rather than scaffolded into a project you then maintain.
+
+**Run it.** Bots are live. Start one, attach a phone or a microphone, let it sit in an
+environment and wait for something to happen.
+
+**Watch it.** Every machine, every state, every event, as it happens. Not logs after the
+fact. The bot's actual topology, drawn from what it reports about itself.
+
+**Poke it.** Click an edge, fire that event, see what the bot does. Ring the phone. Say
+something. Find out whether it decided anything.
+
+**Debug it.** When a bot does nothing, the first question is what it was given to act on,
+and that is a question about perception and topology — exactly what is on screen. mosfet
+reads the same view you do, so "why didn't it answer" is answerable by either of you.
+
+**Teach it.** A correction becomes a stored rule. The workshop is where you watch a rule
+get learned and confirm it stuck.
+
+**Test it.** Replay a situation, pin what the bot was able to perceive and do, and never
+pin the choice it makes. A bot whose output you can predict from reading its topology is a
+script wearing a bot's clothes.
 
 ## How it connects
 
@@ -51,19 +80,19 @@ Only `bot.hsm.observe` spans, and only these attributes, all low-cardinality by 
 | `hsm.observation.occurrence` | ordering |
 | `bot.outcome` | success / failure styling |
 
-Nested shells show ownership. Edges connect consecutive observations of the same machine
-when its state changed. The latest state is highlighted.
+No bot topology is hard-coded. Whatever the bot is, the graph is whatever it reports.
+Nested shells show ownership, edges connect consecutive observations of the same machine
+when its state changed, and the latest state is highlighted.
 
-## Everything is a state machine
+## Everything here is a state machine
 
-The UI is built the same way the bot is: every element is an HSM. Autonomous custom
+The workshop is built the way the bots are. Every element is an HSM: autonomous custom
 elements extend `hsm.from(HTMLElement)`, start in `connectedCallback`, stop in
 `disconnectedCallback`.
 
-`src/flow/` is a graph library that ports React Flow's surface to custom elements
-(`flow-graph`, `flow-node`, `flow-edge`, `flow-handle`, `flow-background`, `flow-controls`,
-`flow-minimap`). Orthogonal concerns are separate sibling machines rather than one tangled
-component:
+`src/flow/` ports React Flow's surface to custom elements (`flow-graph`, `flow-node`,
+`flow-edge`, `flow-handle`, `flow-background`, `flow-controls`, `flow-minimap`). Orthogonal
+concerns are separate sibling machines rather than one tangled component:
 
 | Machine | States |
 |---|---|
