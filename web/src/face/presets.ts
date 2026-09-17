@@ -33,23 +33,47 @@ export type EyeShape = {
   readonly openness: number;
   readonly width: number;
   readonly height: number;
+  /** Lean of the upper lid. Negative drops the inner corner (angry, skeptic). */
   readonly topTilt: number;
+  /** Lean of the lower lid. */
   readonly bottomTilt: number;
+  /**
+   * Bow of the lower lid, independent of its lean. Positive arcs it upward
+   * into the eye, which is what a smile actually does; a lean alone only ever
+   * reads as a smirk.
+   */
+  readonly bottomCurve: number;
+  /** Bow of the upper lid. Positive arcs it downward into the eye. */
+  readonly topCurve: number;
   readonly skew: number;
 };
 
+/**
+ * Eye shapes, tuned wide.
+ *
+ * A display eye reads as a lens: wider than it is tall, filling most of its
+ * box. `topTilt` / `bottomTilt` are the expression -- they raise one corner and
+ * drop the other, and mirrored across a pair they angle the eyes toward each
+ * other (angry) or away (worried). `openness` is lid only, so a blink never
+ * changes which expression is being worn.
+ */
 export const EYE_SHAPES: Record<EyeShapeName, EyeShape> = {
-  normal: { openness: 0.86, width: 0.68, height: 0.58, topTilt: 0, bottomTilt: 0, skew: 0 },
-  happy: { openness: 0.44, width: 0.7, height: 0.46, topTilt: -0.14, bottomTilt: 0.18, skew: 0 },
-  worried: { openness: 0.62, width: 0.68, height: 0.52, topTilt: 0.18, bottomTilt: -0.08, skew: 0.04 },
-  worriedAlt: { openness: 0.62, width: 0.68, height: 0.52, topTilt: -0.18, bottomTilt: 0.08, skew: -0.04 },
-  focused: { openness: 0.52, width: 0.74, height: 0.42, topTilt: 0, bottomTilt: 0, skew: 0 },
-  sleepy: { openness: 0.34, width: 0.72, height: 0.36, topTilt: -0.05, bottomTilt: 0.1, skew: 0 },
-  sleepyAlt: { openness: 0.34, width: 0.72, height: 0.36, topTilt: 0.05, bottomTilt: -0.1, skew: 0 },
-  angry: { openness: 0.5, width: 0.74, height: 0.42, topTilt: 0.22, bottomTilt: -0.08, skew: 0 },
-  surprised: { openness: 1, width: 0.64, height: 0.76, topTilt: 0, bottomTilt: 0, skew: 0 },
-  skeptic: { openness: 0.5, width: 0.72, height: 0.44, topTilt: -0.18, bottomTilt: 0.06, skew: -0.04 },
-  skepticAlt: { openness: 0.5, width: 0.72, height: 0.44, topTilt: 0.18, bottomTilt: -0.06, skew: 0.04 },
+  normal: { openness: 1, width: 0.94, height: 0.72, topTilt: 0, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: 0 },
+  // A smile is the lower lid bowing up into the eye, symmetric, not a lean.
+  happy: { openness: 0.9, width: 0.94, height: 0.72, topTilt: 0, bottomTilt: 0, bottomCurve: 0.78, topCurve: 0, skew: 0 },
+  // Worry raises the inner corner of the upper lid.
+  worried: { openness: 0.88, width: 0.94, height: 0.68, topTilt: 0.22, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: 0.02 },
+  worriedAlt: { openness: 0.88, width: 0.94, height: 0.68, topTilt: -0.22, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: -0.02 },
+  // Focus is a flat narrowing: both lids in, no lean.
+  focused: { openness: 0.54, width: 0.96, height: 0.66, topTilt: 0, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: 0 },
+  sleepy: { openness: 0.26, width: 0.92, height: 0.62, topTilt: -0.05, bottomTilt: 0, bottomCurve: 0, topCurve: 0.15, skew: 0 },
+  sleepyAlt: { openness: 0.26, width: 0.92, height: 0.62, topTilt: 0.05, bottomTilt: 0, bottomCurve: 0, topCurve: 0.15, skew: 0 },
+  // Anger drops the inner corner of the upper lid hard.
+  angry: { openness: 0.84, width: 0.96, height: 0.7, topTilt: -0.3, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: 0 },
+  surprised: { openness: 1, width: 0.88, height: 0.96, topTilt: 0, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: 0 },
+  // Skeptic is the asymmetric one: this eye narrows, the other stays open.
+  skeptic: { openness: 0.46, width: 0.94, height: 0.68, topTilt: -0.16, bottomTilt: 0, bottomCurve: 0, topCurve: 0.1, skew: -0.02 },
+  skepticAlt: { openness: 0.9, width: 0.94, height: 0.68, topTilt: 0.12, bottomTilt: 0, bottomCurve: 0, topCurve: 0, skew: 0.02 },
 };
 
 /** An expression is an asymmetric pair: the two eyes are rarely the same shape. */
@@ -89,6 +113,8 @@ export function blendShape(from: EyeShape, to: EyeShape, t: number): EyeShape {
     height: from.height + (to.height - from.height) * k,
     topTilt: from.topTilt + (to.topTilt - from.topTilt) * k,
     bottomTilt: from.bottomTilt + (to.bottomTilt - from.bottomTilt) * k,
+    bottomCurve: from.bottomCurve + (to.bottomCurve - from.bottomCurve) * k,
+    topCurve: from.topCurve + (to.topCurve - from.topCurve) * k,
     skew: from.skew + (to.skew - from.skew) * k,
   };
 }
