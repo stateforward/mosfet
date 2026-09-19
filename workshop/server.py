@@ -1,10 +1,10 @@
 """Chat with mosfet from the browser, by text message.
 
 A small local HTTP bridge around a mosfet Bot holding a real library phone
-(`mosfet.devices.phone.Phone`). The bridge is that phone's messaging service — the
+(`mosfet.devices.smart_phone.SmartPhone`). The bridge is that phone's messaging service — the
 carrier — and the browser is the far end of the line:
 
-    POST /api/sms  -> phone.SmsTextEvent into the phone (sender "visitor") -> display, ding, and a
+    POST /api/sms  -> smart_phone.SmsTextEvent into the phone (sender "visitor") -> display, ding, and a
                    phone.notification (carrying the new message) dispatched to the bot holding it.
     bot texts back -> phone.send_text_message -> firmware publishes
                    phone.service.text_message_send_requested to the carrier (`_Carrier`, the
@@ -66,7 +66,7 @@ import hsm
 from mosfet import telemetry
 from mosfet.abilities import cognition, memory
 from mosfet.bot import Bot as MosfetBot
-from mosfet.devices import phone
+from mosfet.devices import smart_phone
 from mosfet.environment import Environment
 from mosfet.providers import openai_compat
 from mosfet.providers.typesafe import Processor as TypeSafeProcessor
@@ -145,13 +145,15 @@ class _Carrier:
 
     def publish(self, ctx: hsm.Context, event: hsm.Event[typing.Any]) -> None:
         _LOG.info("phone published %s", event.name)
-        if event.name != phone.ServiceTextMessageSendRequestedEvent.name:
+        if event.name != smart_phone.ServiceTextMessageSendRequestedEvent.name:
             return
         request = event.data
-        assert isinstance(request, phone.SendTextMessageData)
+        assert isinstance(request, smart_phone.SendTextMessageData)
         if request.to != _VISITOR:
-            verdict: hsm.Event[typing.Any] = phone.ServiceTextMessageSendFailedEvent.with_data(
-                phone.TextMessageSendFailedData(to=request.to, text=request.text, failure_kind="remote_unavailable")
+            verdict: hsm.Event[typing.Any] = smart_phone.ServiceTextMessageSendFailedEvent.with_data(
+                smart_phone.TextMessageSendFailedData(
+                    to=request.to, text=request.text, failure_kind="remote_unavailable"
+                )
             )
         else:
             waiting, self._waiting = self._waiting, None
@@ -159,8 +161,8 @@ class _Carrier:
                 _LOG.warning("text to the visitor arrived with no browser turn waiting; it is dropped from the page")
             else:
                 waiting.set_result(request.text)
-            verdict = phone.ServiceTextMessageSentEvent.with_data(
-                phone.TextMessageSentData(to=request.to, text=request.text)
+            verdict = smart_phone.ServiceTextMessageSentEvent.with_data(
+                smart_phone.TextMessageSentData(to=request.to, text=request.text)
             )
         target = self._target
         if target is None:
@@ -172,7 +174,7 @@ class _Carrier:
 class _PhoneBot(MosfetBot):
     """A mosfet holding one phone. Bot is abstract by design: each bot declares its own body."""
 
-    def __init__(self, *, handset: phone.Phone, cognition_ability: cognition.Cognition) -> None:
+    def __init__(self, *, handset: smart_phone.SmartPhone, cognition_ability: cognition.Cognition) -> None:
         super().__init__({"phone": handset}, cognition=cognition_ability)
 
 
@@ -219,7 +221,7 @@ class Session:
     """One chat's own mosfet: its own phone, carrier, memory, and cognition. Nothing is shared between sessions."""
 
     body: _PhoneBot
-    handset: phone.Phone
+    handset: smart_phone.SmartPhone
     carrier: _Carrier
     environment: Environment
     turn: threading.Lock = field(default_factory=threading.Lock)
@@ -232,7 +234,9 @@ class Session:
         await self.handset.dispatch(
             self.handset.context(),
             dataclasses.replace(
-                phone.SmsTextEvent.with_data(phone.SmsTextData(id=message_id, sender=_VISITOR, text=message)),
+                smart_phone.SmsTextEvent.with_data(
+                    smart_phone.SmsTextData(id=message_id, sender=_VISITOR, text=message)
+                ),
                 id=message_id,
             ),
         )
@@ -283,7 +287,7 @@ class Workshop:
 
         async def boot() -> tuple[Session, str]:
             carrier = _Carrier()
-            handset = phone.Phone(service=carrier)
+            handset = smart_phone.SmartPhone(service=carrier)
             ability, label = _cognition(self.settings)
             body = _PhoneBot(handset=handset, cognition_ability=ability)
             environment = Environment()
