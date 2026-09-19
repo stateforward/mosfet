@@ -1,0 +1,18 @@
+[project]
+name = "mosfet-workshop"
+version = "0.1.0"
+description = "Local server so the web chat can talk to mosfet through the library."
+requires-python = ">=3.13"
+dependencies = [
+  "stateforward.mosfet",
+  "mosfet-provider-openai-compat",
+  "mosfet-provider-typesafe",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+stateforward-mosfet = { path = "../mosfet.py", editable = true }
+mosfet-provider-openai-compat = { path = "../mosfet.py/src/providers/openai_compat", editable = true }
+mosfet-provider-typesafe = { path = "../mosfet.py/src/providers/typesafe", editable = true }
