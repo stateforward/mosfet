@@ -26,6 +26,7 @@
       .bench-head .lede b { color: var(--ink); font-family: var(--mono); font-weight: 600; background: #c9f2e2; padding: 0 .25em; border-radius: 4px; }
       main { min-block-size: 0; display: grid; justify-items: center; align-content: start; gap: 1.6rem; padding: 0 16px 3rem; }
       mosfet-bench { inline-size: min(56rem, 100%); }
+      mosfet-builder { inline-size: min(56rem, 100%); }
       mosfet-chat {
         inline-size: min(56rem, 100%); block-size: 34rem;
         --chat-accent: var(--signal);
@@ -49,13 +50,16 @@
       <p class="lede">Run the bot on a real job. Correct it once, in plain words. Every run after that is <b>$0.00</b> — the rule is pinned, no model call.</p>
     </div>
     <main>
+      <mosfet-builder></mosfet-builder>
       <mosfet-bench></mosfet-bench>
       <mosfet-chat></mosfet-chat>
     </main>
     <footer>run it · correct it once · it stays learned</footer>
     <script type="module">
       import { registerMosfetBench } from "/src/bench/mosfet-bench.ts";
+      import { registerMosfetBuilder } from "/src/bench/mosfet-builder.ts";
       registerMosfetBench();
+      registerMosfetBuilder();
     </script>
     <script type="module" src="/src/playground/main.ts"></script>
   </body>

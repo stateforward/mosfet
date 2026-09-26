@@ -64,10 +64,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import hsm
 from mosfet import telemetry
-from mosfet.abilities import cognition, memory
+from mosfet import abilities
+from mosfet.abilities import cognition, memory, listening, speaking
 from mosfet.bot import Bot as MosfetBot
+from mosfet.device import Device as device
 from mosfet.devices import smart_phone
+from mosfet.devices.audio import microphone as audio_microphone
+from mosfet.devices.audio import speaker as audio_speaker
 from mosfet.environment import Environment
+from mosfet.providers import gemini as gemini_provider
 from mosfet.providers import openai_compat
 from mosfet.providers.typesafe import Processor as TypeSafeProcessor
 
@@ -301,6 +306,26 @@ class _PhoneBot(MosfetBot):
         super().__init__({"phone": handset}, cognition=cognition_ability)
 
 
+class _ComposedBot(MosfetBot):
+    """A bot assembled from a Builder spec: any devices, any input/output abilities."""
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        devices: dict[str, device],
+        cognition: cognition.Cognition,
+        input: tuple[abilities.Ability[typing.Any, typing.Any], ...] = (),
+        output: tuple[abilities.Ability[typing.Any, typing.Any], ...] = (),
+    ) -> None:
+        self.name = name
+        super().__init__(devices, cognition=cognition, input=input, output=output)
+
+
+def _gemini_key(settings: dict[str, str]) -> str:
+    return _first(settings, "BOT_GEMINI_API_KEY", "GEMINI_API_KEY") or ""
+
+
 def _cognition(settings: dict[str, str]) -> tuple[cognition.Cognition, str]:
     """Wire Cognition for a fresh mosfet.
 
@@ -376,6 +401,143 @@ class Session:
             return None
 
 
+class Builder:
+    """Compose a real mosfet bot from a UI spec: catalog of parts, build, interact, stop.
+
+    A spec is {"devices": ["phone", "microphone", "speaker"], "abilities": ["listening",
+    "speaking"], "name": "..."}. Cognition is always wired (a bot that cannot think is a
+    script). Devices and abilities are validated against the catalog; input abilities are
+    those that observe devices, output abilities those that act. What is not offered in the
+    catalog is listed in MISSING, not silently accepted.
+    """
+
+    DEVICES: dict[str, dict[str, str]] = {
+        "phone": {"label": "smart phone", "describes": "texts: incoming SmsTextEvent, outgoing via send"},
+        "microphone": {"label": "microphone", "describes": "hears environment sound"},
+        "speaker": {"label": "speaker", "describes": "plays out sound"},
+    }
+
+    ABILITIES: dict[str, dict[str, object]] = {
+        "listening": {
+            "label": "listening",
+            "kind": "input",
+            "needs": ["microphone"],
+            "describes": "turns sound into thought",
+            "available": False,
+            "note": "needs a voice-activity provider (mlx-audio) not installed in this workshop",
+        },
+        "speaking": {"label": "speaking", "kind": "output", "needs": ["speaker"], "describes": "utters text aloud", "available": True},
+    }
+
+    def __init__(self, workshop: Workshop) -> None:
+        self.workshop = workshop
+
+    def catalog(self) -> dict[str, object]:
+        return {
+            "devices": [{"id": k, **v} for k, v in self.DEVICES.items()],
+            "abilities": [{"id": k, **v} for k, v in self.ABILITIES.items()],
+            "cognition": {"label": "cognition", "describes": "always wired: intuition, reasoning, reflection"},
+            "model": _LLM_BASE_URL,
+        }
+
+    def _validate(self, spec: dict[str, typing.Any]) -> tuple[list[str], list[str], str | None]:
+        devices = [str(d) for d in spec.get("devices") or []]
+        abilities = [str(a) for a in spec.get("abilities") or []]
+        unknown = [d for d in devices if d not in self.DEVICES] + [a for a in abilities if a not in self.ABILITIES]
+        if unknown:
+            return devices, abilities, f"unknown parts: {', '.join(unknown)}"
+        for ability_id in abilities:
+            entry = self.ABILITIES[ability_id]
+            if entry.get("available") is False:
+                return devices, abilities, f"{ability_id} is not available here: {entry.get('note', '')}"
+            missing = [n for n in entry.get("needs", []) if n not in devices]
+            if missing:
+                return devices, abilities, f"{ability_id} needs device(s): {', '.join(missing)}"
+        return devices, abilities, None
+
+    def build(self, spec: dict[str, typing.Any]) -> tuple[str | None, str | None]:
+        devices, abilities, problem = self._validate(spec)
+        if problem is not None:
+            return None, problem
+        if not self.workshop.ready:
+            return None, self.workshop.problem
+
+        async def boot() -> tuple[Session, str]:
+            carrier = _Carrier()
+            handset = smart_phone.SmartPhone(service=carrier) if "phone" in devices else None
+            mic = audio_microphone.Microphone() if "microphone" in devices else None
+            spk = audio_speaker.Speaker() if "speaker" in devices else None
+            owned: dict[str, device] = {}
+            if handset is not None:
+                owned["phone"] = handset
+            if mic is not None:
+                owned["microphone"] = mic
+            if spk is not None:
+                owned["speaker"] = spk
+            cognition_ability, label = _cognition(self.workshop.settings)
+            parts: list[str] = [f"cognition"]
+            input_abilities: tuple[abilities.Ability[typing.Any, typing.Any], ...] = ()
+            output_abilities: tuple[abilities.Ability[typing.Any, typing.Any], ...] = ()
+            if "listening" in abilities:
+                input_abilities = (
+                    listening.Listening(voice_activity_classifier=moonshine.VoiceActivityClassifier()),
+                )
+                parts.append("listening")
+            if "speaking" in abilities:
+                tts_client = gemini_provider.ChatClient(api_key=_gemini_key(self.workshop.settings))
+                output_abilities = (
+                    speaking.Speaking(encoder=gemini_provider.SpeechEncoder(client=tts_client)),
+                )
+                parts.append("speaking")
+            name = str(spec.get("name") or "mosfet")[:40]
+            body = _ComposedBot(name=name, devices=owned, cognition=cognition_ability, input=input_abilities, output=output_abilities)
+            environment = Environment()
+            await body.attach(environment)
+            label = f"{name} [{' '.join(parts)}]"
+            return Session(body, handset, carrier, environment), label
+
+        try:
+            session, label = asyncio.run_coroutine_threadsafe(boot(), self.workshop.loop).result(timeout=60)
+        except Exception as error:  # noqa: BLE001 — surfaced to the UI as the problem
+            _LOG.exception("bot failed to build")
+            return None, f"bot failed to build: {error}"
+        bot_id = uuid.uuid4().hex
+        with self.workshop.lock:
+            self.workshop.built[bot_id] = session
+        _LOG.info("bot %s built (%s)", bot_id[:8], label)
+        return bot_id, label
+
+    def interact(self, bot_id: str, text: str) -> tuple[str | None, str | None, bool]:
+        with self.workshop.lock:
+            session = self.workshop.built.get(bot_id)
+        if session is None:
+            return None, "That bot is not running.", False
+        if not session.turn.acquire(blocking=False):
+            return None, "The bot is still on its last turn.", True
+        try:
+            answer = asyncio.run_coroutine_threadsafe(session.text(text), self.workshop.loop).result(
+                timeout=_REPLY_TIMEOUT_S + 15
+            )
+        except Exception as error:  # noqa: BLE001
+            _LOG.exception("bot turn failed")
+            return None, f"The turn failed: {error}", True
+        finally:
+            session.turn.release()
+        if answer is None:
+            return None, f"The bot did not answer within {_REPLY_TIMEOUT_S:.0f}s.", True
+        return answer, None, True
+
+    def stop(self, bot_id: str) -> None:
+        with self.workshop.lock:
+            session = self.workshop.built.pop(bot_id, None)
+        if session is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(session.body.detach(session.environment), self.workshop.loop).result(timeout=30)
+        except Exception:  # noqa: BLE001
+            _LOG.exception("bot %s did not stop cleanly", bot_id[:8])
+
+
 class Workshop:
     """Starts a fresh mosfet per chat session and stops it when the session ends or goes idle.
 
@@ -387,6 +549,7 @@ class Workshop:
         threading.Thread(target=self.loop.run_forever, name="mosfet-bots", daemon=True).start()
         self.settings = _settings()
         self.sessions: dict[str, Session] = {}
+        self.built: dict[str, Session] = {}
         self.lock = threading.Lock()
         self.model: str | None = None
         missing = [
@@ -489,7 +652,7 @@ class Workshop:
 _SESSION_PATH = re.compile(r"^/api/session/([0-9a-f]{32})/end$")
 
 
-def _handler(workshop: Workshop, bench: Bench) -> type[BaseHTTPRequestHandler]:
+def _handler(workshop: Workshop, bench: Bench, builder: Builder) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "mosfet-workshop/0.2"
 
@@ -514,6 +677,10 @@ def _handler(workshop: Workshop, bench: Bench) -> type[BaseHTTPRequestHandler]:
                 self._send(200, {"ready": workshop.ready, "model": workshop.model, "problem": workshop.problem})
             elif self.path == "/api/bench/rules":
                 self._send(200, bench.list_rules())
+            elif self.path == "/api/builder/catalog":
+                self._send(200, builder.catalog())
+            elif self.path == "/api/builder/bots":
+                self._send(200, {"bots": sorted(workshop.built)})
             else:
                 self._send(404, {"problem": "not found"})
 
@@ -527,7 +694,7 @@ def _handler(workshop: Workshop, bench: Bench) -> type[BaseHTTPRequestHandler]:
                 workshop.close(ended.group(1))
                 self._send(200, {"session": None, "problem": None})
                 return
-            if self.path.startswith("/api/bench/"):
+            if self.path.startswith(("/api/bench/", "/api/builder/")):
                 self._bench_post()
                 return
             if self.path != "/api/sms":
@@ -571,6 +738,24 @@ def _handler(workshop: Workshop, bench: Bench) -> type[BaseHTTPRequestHandler]:
                     self._send(502, {"problem": f"teach failed: {error}"})
             elif self.path == "/api/bench/forget":
                 self._send(200, bench.forget(task))
+            elif self.path == "/api/builder/build":
+                try:
+                    bot_id, label = builder.build(data)
+                except Exception as error:  # noqa: BLE001
+                    bot_id, label = None, f"build failed: {error}"
+                self._send(200 if bot_id else 400, {"bot": bot_id, "label": label})
+            elif self.path == "/api/builder/interact":
+                bot_id = str(data.get("bot", ""))
+                text = str(data.get("text", "")).strip()[:_MAX_TEXT]
+                if not bot_id or not text:
+                    self._send(400, {"reply": None, "problem": 'Expected {"bot": "...", "text": "..."}.'})
+                    return
+                reply, problem, known = builder.interact(bot_id, text)
+                self._send(200 if known else 404, {"reply": reply, "problem": problem})
+            elif self.path == "/api/builder/stop":
+                bot_id = str(data.get("bot", ""))
+                builder.stop(bot_id)
+                self._send(200, {"bot": bot_id, "stopped": True})
             else:
                 self._send(404, {"problem": "not found"})
 
@@ -600,9 +785,10 @@ def main() -> int:
         _LOG.error("mosfet telemetry is broken, running without it: %s", error)
     workshop = Workshop()
     bench = Bench(_settings())
+    builder = Builder(workshop)
     status = "ready" if workshop.problem is None else workshop.problem
     print(f"mosfet workshop on http://127.0.0.1:{args.port} ({status})", flush=True)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), _handler(workshop, bench))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), _handler(workshop, bench, builder))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
