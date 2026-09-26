@@ -18,11 +18,12 @@ papered over. Texts to any other address fail honestly (the carrier only reaches
 The bridge wires only what exists; `MISSING` lists anything absent, and /api/health reports
 ready: true only when nothing is.
 
-Cognition is wired like the phone bot example's `_phone_cognition`:
+Cognition is wired like the phone bot example's `_phone_cognition`, pointed at the
+OpenAI-compatible proxy cpa.willen.dev (model glm-5.3-flash-exl3):
 
     Intuition  -> TypeSafe system_one (mosfet.providers.typesafe.Processor)
-    Reasoning  -> OpenAI Luna over the Responses API (mosfet.providers.openai_compat.Processor)
-    Reflection -> OpenAI Luna over the Responses API (owns the shared short-term Memory)
+    Reasoning  -> openai_compat over cpa.willen.dev (mosfet.providers.openai_compat.Processor)
+    Reflection -> openai_compat over cpa.willen.dev (owns the shared short-term Memory)
 
     uv run --project workshop workshop/server.py        # listens on 127.0.0.1:8787
 
@@ -36,11 +37,10 @@ Endpoints:
                                  (404 when that session's mosfet has ended)
     POST /api/session/<id>/end   stops that session's mosfet (sendBeacon-friendly)
 
-Credentials: TYPESAFE_API_KEY and BOT_OPENAI_API_KEY (or OPENAI_API_KEY), from the
+Credentials: TYPESAFE_API_KEY and BOT_LLM_API_KEY (or BOT_OPENAI_API_KEY / OPENAI_API_KEY), from the
 process environment or the .env files in `_ENV_FILES` (later files win). The reasoning
-model is BOT_REASONING_MODEL or gpt-5.6-luna; BOT_OPENAI_MODEL is deliberately ignored. Reasoning
-and reflection run with BOT_REASONING_EFFORT (none|minimal|low|medium|high, default high).
-Without keys the bridge still runs and says so.
+model is BOT_REASONING_MODEL or glm-5.3-flash-exl3; the endpoint is BOT_LLM_BASE_URL or
+https://cpa.willen.dev/v1. Without keys the bridge still runs and says so.
 
 Only binds to localhost: it spends your model credits for anyone who can reach it.
 """
@@ -81,9 +81,8 @@ _ENV_FILES = (
     pathlib.Path.home() / "VSCode" / "stateforward" / "bot" / "bot.py" / ".env",
     _WORKSHOP / ".env",
 )
-_REASONING_MODEL = "gpt-5.6-luna"
-_REASONING_EFFORT = openai_compat.ReasoningEffort.HIGH
-_DEFAULT_BASE_URL = "https://api.openai.com/v1"
+_REASONING_MODEL = "glm-5.3-flash-exl3"
+_LLM_BASE_URL = _first(os.environ, "BOT_LLM_BASE_URL") or "https://cpa.willen.dev/v1"
 _MAX_TEXT = 4000
 _REPLY_TIMEOUT_S = 90.0
 _IDLE_S = 30 * 60
@@ -94,7 +93,7 @@ _VISITOR = "visitor"
 
 def _settings() -> dict[str, str]:
     """Process environment, overlaid by the .env files in order (later wins). Values are never logged."""
-    prefixes = ("BOT_OPENAI_", "OPENAI_", "TYPESAFE_", "BOT_REASONING_", "BOT_REFLECTION_")
+    prefixes = ("BOT_LLM_", "BOT_OPENAI_", "OPENAI_", "TYPESAFE_", "BOT_REASONING_", "BOT_REFLECTION_")
     values = {k: v for k, v in os.environ.items() if k.startswith(prefixes)}
     for path in _ENV_FILES:
         if not path.exists():
@@ -179,41 +178,48 @@ class _PhoneBot(MosfetBot):
 
 
 def _cognition(settings: dict[str, str]) -> tuple[cognition.Cognition, str]:
-    openai_key = _first(settings, "BOT_OPENAI_API_KEY", "OPENAI_API_KEY") or ""
-    base_url = _first(settings, "BOT_OPENAI_BASE_URL", "OPENAI_BASE_URL") or _DEFAULT_BASE_URL
+    """Wire Cognition for a fresh mosfet.
+
+    Wire reasoning and reflection to the OpenAI-compatible proxy at cpa.willen.dev
+    (model glm-5.3-flash-exl3). Gemini stood in while the OpenAI org had no
+    credits; the proxy is the replacement.
+    """
+
+    llm_key = _first(settings, "BOT_LLM_API_KEY", "BOT_OPENAI_API_KEY", "OPENAI_API_KEY") or ""
     reasoning_model = _first(settings, "BOT_REASONING_MODEL") or _REASONING_MODEL
     reflection_model = _first(settings, "BOT_REFLECTION_MODEL") or reasoning_model
-    effort = openai_compat.ReasoningEffort(_first(settings, "BOT_REASONING_EFFORT") or _REASONING_EFFORT)
 
     def luna(model: str, provider: str) -> openai_compat.Processor:
         return openai_compat.Processor(
-            generator=openai_compat.ResponsesTextGenerator(
-                client=openai_compat.ChatClient(model=model, api_key=openai_key, base_url=base_url),
+            generator=openai_compat.TextGenerator(
+                client=openai_compat.ChatClient(
+                    model=model,
+                    base_url=_LLM_BASE_URL,
+                    api_key=llm_key,
+                ),
                 provider=provider,
-                reasoning_effort=effort,
             )
         )
 
     store = memory.ShortTermMemory()
     _LOG.info(
-        "cognition wired intuition=typesafe reasoning=%s reflection=%s effort=%s",
+        "cognition wired intuition=typesafe reasoning=%s reflection=%s",
         reasoning_model,
         reflection_model,
-        effort,
     )
     ability = cognition.Cognition(
         autonomy=cognition.Autonomy(memory=store),
         intuition=cognition.Intuition(processor=TypeSafeProcessor(api_key=_first(settings, "TYPESAFE_API_KEY"))),
         reasoning=cognition.Reasoning(
-            processor=luna(reasoning_model, "openai_luna_reasoning"),
+            processor=luna(reasoning_model, "gemini_reasoning"),
             memory=store,
         ),
         reflection=cognition.Reflection(
-            processor=luna(reflection_model, "openai_luna_reflection"),
+            processor=luna(reflection_model, "gemini_reflection"),
             memory=store,
         ),
     )
-    return ability, f"intuition typesafe · reasoning {reasoning_model} ({effort})"
+    return ability, f"intuition typesafe · reasoning {reasoning_model}"
 
 
 @dataclass
@@ -263,7 +269,7 @@ class Workshop:
             name
             for name, present in (
                 ("TYPESAFE_API_KEY", _first(self.settings, "TYPESAFE_API_KEY")),
-                ("BOT_OPENAI_API_KEY", _first(self.settings, "BOT_OPENAI_API_KEY", "OPENAI_API_KEY")),
+                ("BOT_GEMINI_API_KEY", _first(self.settings, "BOT_GEMINI_API_KEY", "GEMINI_API_KEY")),
             )
             if not present
         ]
