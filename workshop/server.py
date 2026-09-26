@@ -82,7 +82,7 @@ _ENV_FILES = (
     _WORKSHOP / ".env",
 )
 _REASONING_MODEL = "glm-5.3-flash-exl3"
-_LLM_BASE_URL = _first(os.environ, "BOT_LLM_BASE_URL") or "https://cpa.willen.dev/v1"
+_LLM_BASE_URL = os.environ.get("BOT_LLM_BASE_URL") or "https://cpa.willen.dev/v1"
 _MAX_TEXT = 4000
 _REPLY_TIMEOUT_S = 90.0
 _IDLE_S = 30 * 60
