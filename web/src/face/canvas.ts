@@ -34,10 +34,14 @@ export function resizeCanvasToHost(
 }
 
 /**
- * Draw one eye as a closed bezier lid pair.
+ * Draw one eye as a rounded quad whose top and bottom lids are straight, tilted edges.
  *
- * `shape.openness` collapses the vertical span, so a blink is the same path
- * with a smaller height rather than a different drawing.
+ * Size is measured against the canvas's smaller side, so a surprised circle stays
+ * a circle in a non-square host. Positive `topTilt` drops the lid toward the nose
+ * (angry); negative raises it (worried). Positive `bottomTilt` raises the lower lid
+ * toward the nose; negative arches both lower corners up into a smile.
+ * `shape.openness` collapses height about the center, so a blink is the same shape
+ * squeezed flat rather than a different drawing.
  */
 export function drawEye(args: {
   ctx: CanvasRenderingContext2D;
@@ -46,77 +50,71 @@ export function drawEye(args: {
   shape: EyeShape;
   side: EyeSide;
   fill: CanvasPaint;
+  /** Gaze offset in -1..1 of the eye's free travel inside its box. */
+  lookX?: number;
+  lookY?: number;
+  /** Presentation squash and stretch; 1 is at rest. */
+  scaleX?: number;
+  scaleY?: number;
 }): void {
   const { ctx, width, height, shape, side, fill } = args;
+  const unit = Math.min(width, height);
+  const eyeWidth = unit * clamp(shape.width * (args.scaleX ?? 1), 0.1, 0.98);
+  const eyeHeight = Math.max(
+    unit * 0.04,
+    unit * clamp(shape.height * (args.scaleY ?? 1), 0.02, 0.98) * clamp(shape.openness, 0, 1),
+  );
+  // "Toward the nose" is +x for the left eye and -x for the right.
+  const nose = side === "left" ? 1 : -1;
+  // Travel is whatever room the eye leaves in its box, so a big surprised eye moves less and never clips.
+  const travelX = Math.max(0, (width - eyeWidth) / 2 - 1);
+  const travelY = Math.max(0, (height - eyeHeight) / 2 - 1);
+  const centerX = width / 2 + nose * shape.skew * unit + clamp(args.lookX ?? 0, -1, 1) * travelX;
+  const centerY = height / 2 + clamp(args.lookY ?? 0, -1, 1) * travelY;
+  const left = centerX - eyeWidth / 2;
+  const right = centerX + eyeWidth / 2;
+  const top = centerY - eyeHeight / 2;
+  const bottom = centerY + eyeHeight / 2;
+  const topDrop = clamp(shape.topTilt, -0.9, 0.9) * eyeHeight;
+  const bottomLift = clamp(shape.bottomTilt, -0.9, 0.9) * eyeHeight;
 
-  // The box is the eye. Fill it: a display eye reads as a lens, not a dot
-  // floating in space.
-  const eyeWidth = width * clamp(shape.width, 0.1, 1);
-  const eyeHeight = height * clamp(shape.height, 0.05, 1);
-  const lid = clamp(shape.openness, 0, 1);
+  // Lid corners, outer/inner relative to the nose.
+  const noseX = nose > 0 ? right : left;
+  const outerX = nose > 0 ? left : right;
+  const topNose = { x: noseX, y: top + Math.max(0, topDrop) };
+  const topOuter = { x: outerX, y: top + Math.max(0, -topDrop) };
+  const smile = bottomLift < 0 ? -bottomLift : 0;
+  const bottomNose = { x: noseX, y: bottom - Math.max(0, bottomLift) };
+  const bottomOuter = { x: outerX, y: bottom };
 
-  const centerX = width / 2 + (side === "left" ? -shape.skew : shape.skew) * width;
-  const centerY = height / 2;
-  const halfW = eyeWidth / 2;
-  const halfH = eyeHeight / 2;
-  const left = centerX - halfW;
-  const right = centerX + halfW;
-
-  // Tilts raise one corner and drop the other: that asymmetry is the whole
-  // expression. Mirror them so a pair angles toward or away from each other.
-  const sign = side === "left" ? -1 : 1;
-  const topTilt = sign * shape.topTilt * eyeHeight;
-  const bottomTilt = sign * shape.bottomTilt * eyeHeight;
-
-  // Lids close toward the middle from both directions, so a blink keeps the
-  // pupil line centered instead of sliding the shape upward.
-  const openHalf = halfH * lid;
-
-  // A lid may lean, but it may never cross the far lid: past that the two
-  // curves swap sides and the eye renders as a bowtie. Clamp each corner to
-  // leave a minimum aperture, which is what keeps a strong tilt reading as a
-  // squint instead of a fold.
-  const minGap = openHalf * 0.12;
-  const lidY = (base: number, tilt: number, x: number, isTop: boolean): number => {
-    const y = base + tilt * x;
-    const limit = isTop ? centerY - minGap : centerY + minGap;
-    return isTop ? Math.min(y, limit) : Math.max(y, limit);
-  };
-  const topAt = (x: number): number => lidY(centerY - openHalf, topTilt, x, true);
-  const bottomAt = (x: number): number => lidY(centerY + openHalf, bottomTilt, x, false);
-
-  // Rounded ends, but never so round that the tilt is sanded off.
-  const radius = Math.min(halfW, openHalf) * 0.55;
-
-  // Curvature bows a lid toward the eye's middle. The control points sit
-  // beyond the endpoints, so a positive curve arcs the lid inward across its
-  // whole span rather than kinking it at the center.
-  const topBow = -openHalf * 0.22 + openHalf * shape.topCurve * 2.1;
-  const bottomBow = openHalf * 0.18 - openHalf * shape.bottomCurve * 2.1;
+  const corners = [topOuter, topNose, bottomNose, bottomOuter];
+  const shortest = Math.min(eyeWidth, bottomNose.y - topNose.y, bottomOuter.y - topOuter.y);
+  const radius = Math.max(0, shortest) * clamp(shape.roundness, 0, 0.5);
 
   ctx.fillStyle = fill;
   ctx.beginPath();
-
-  // Top lid: left corner -> right corner.
-  ctx.moveTo(left + radius, topAt(-1));
-  ctx.bezierCurveTo(
-    centerX - halfW * 0.35, topAt(-0.35) + topBow,
-    centerX + halfW * 0.35, topAt(0.35) + topBow,
-    right - radius, topAt(1),
-  );
-  // Right end cap.
-  ctx.quadraticCurveTo(right, topAt(1) + openHalf * 0.2, right, centerY);
-  ctx.quadraticCurveTo(right, bottomAt(1) - openHalf * 0.2, right - radius, bottomAt(1));
-  // Bottom lid: right corner -> left corner.
-  ctx.bezierCurveTo(
-    centerX + halfW * 0.35, bottomAt(0.35) + bottomBow,
-    centerX - halfW * 0.35, bottomAt(-0.35) + bottomBow,
-    left + radius, bottomAt(-1),
-  );
-  // Left end cap.
-  ctx.quadraticCurveTo(left, bottomAt(-1) - openHalf * 0.2, left, centerY);
-  ctx.quadraticCurveTo(left, topAt(-1) + openHalf * 0.2, left + radius, topAt(-1));
-
+  const start = midpoint(corners[3]!, corners[0]!);
+  ctx.moveTo(start.x, start.y);
+  for (let i = 0; i < corners.length; i += 1) {
+    const corner = corners[i]!;
+    const next = corners[(i + 1) % corners.length]!;
+    ctx.arcTo(corner.x, corner.y, next.x, next.y, radius);
+  }
   ctx.closePath();
-  ctx.fill();
+  if (smile <= 0) {
+    ctx.fill();
+    return;
+  }
+  // Bite an arch out of the bottom so the eye reads as a smiling, squinted lid.
+  ctx.save();
+  ctx.clip();
+  ctx.beginPath();
+  ctx.rect(0, 0, width, height);
+  ctx.ellipse(centerX, bottom + eyeHeight * 0.1, eyeWidth * 0.56, smile * 1.6, 0, 0, Math.PI * 2);
+  ctx.fill("evenodd");
+  ctx.restore();
+}
+
+function midpoint(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }

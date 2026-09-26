@@ -88,7 +88,7 @@ const CONNECT_WAIT_MS = 2000;
 const DROP_NONE = 0;
 
 test("flow-handle registers, attaches, and reflects kind and position", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("flow-handle");
   });
@@ -180,7 +180,7 @@ test("flow-handle registers, attaches, and reflects kind and position", async ({
 });
 
 test("flow-node-resizer registers, reflects visible, and names a control", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("flow-node-resizer");
     await customElements.whenDefined("flow-node-resize-control");
@@ -240,7 +240,7 @@ test("flow-node-resizer registers, reflects visible, and names a control", async
 });
 
 test("flow-node-resize-control offers eight labeled handles, hides when not offered, and resizes by keyboard", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("flow-graph");
     await customElements.whenDefined("flow-node");
@@ -401,7 +401,7 @@ test("flow-node-resize-control offers eight labeled handles, hides when not offe
 });
 
 test("flow-minimap registers, slots into flow-graph, and draws with fillStyle", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("flow-minimap");
     await customElements.whenDefined("flow-graph");
@@ -462,7 +462,7 @@ test("flow-minimap registers, slots into flow-graph, and draws with fillStyle", 
 });
 
 test("flow-background variant lines and dots via property and attribute", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("flow-background");
   });
@@ -506,7 +506,7 @@ test("flow-background variant lines and dots via property and attribute", async 
 });
 
 test("flow-controls click emits composed flow-control and does not zoom", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("flow-controls");
   });
@@ -554,7 +554,7 @@ test("flow-controls click emits composed flow-control and does not zoom", async 
 });
 
 test("bot-machine-graph nested connect leaves flow-graph nodes not draggable", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("bot-machine-graph");
     await customElements.whenDefined("flow-graph");
@@ -600,7 +600,7 @@ test("bot-machine-graph nested connect leaves flow-graph nodes not draggable", a
 });
 
 test("bot-machine-graph graphs before append keep nested fit", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("bot-machine-graph");
     await customElements.whenDefined("flow-graph");
@@ -660,7 +660,7 @@ test("bot-machine-graph graphs before append keep nested fit", async ({ page }) 
 });
 
 test("in-document bot-dashboard upgrade starts nested flow-graph", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await page.evaluate(async () => {
     await customElements.whenDefined("bot-dashboard");
     await customElements.whenDefined("bot-machine-graph");

@@ -3,7 +3,24 @@ import * as hsm from "../hsm.ts";
 import { drawEye, resizeCanvasToHost, type CanvasPaint } from "./canvas.ts";
 import { Eye } from "./eye.ts";
 import { Face, startFace } from "./face-machine.ts";
-import { parseExpression, type ExpressionName } from "./presets.ts";
+import { Gaze, startGaze } from "./gaze.ts";
+import {
+  blendShape,
+  EXPRESSIONS,
+  EYE_SHAPES,
+  parseExpression,
+  withOpenness,
+  type EyeShape,
+  type ExpressionName,
+} from "./presets.ts";
+
+/** Fraction of the remaining distance an expression change covers per frame. */
+const EXPRESSION_EASE = 0.22;
+/** Per-frame easing for gaze and lids. Lids are fast; eyes dart but settle. */
+const GAZE_EASE = 0.2;
+const LID_EASE = 0.55;
+/** Pointer distance, in CSS px, that counts as looking all the way to one side. */
+const TRACK_REACH_PX = 480;
 
 export const BOT_FACE_TAG = "bot-face";
 
@@ -52,7 +69,7 @@ template.innerHTML = `
  */
 export class BotFaceElement extends hsm.from(HTMLElement) {
   static get observedAttributes(): string[] {
-    return ["expression", "fill", "background"];
+    return ["expression", "fill", "background", "track"];
   }
 
   #root: ShadowRoot;
@@ -63,6 +80,17 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
   #fill: CanvasPaint = "#26d1a2";
   #background: CanvasPaint | null = null;
   #frame = 0;
+  /** Expression geometry currently on screen, eased toward the face's expression. */
+  #shown: { left: EyeShape; right: EyeShape } | null = null;
+  #gaze: Gaze | null = null;
+  #look = { x: 0, y: 0 };
+  #lids = { left: 1, right: 1 };
+  #lastExpression: ExpressionName | null = null;
+  #popAt = -Infinity;
+  #pointer: { x: number; y: number } | null = null;
+  #onPointer = (event: PointerEvent): void => {
+    this.#pointer = { x: event.clientX, y: event.clientY };
+  };
 
   constructor() {
     super();
@@ -104,8 +132,12 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
 
     hsm.ensureStarted({ instance: this, model: BotFaceElement.model });
     this.#face = startFace({ ctx: this.context() });
+    this.#gaze = startGaze({ ctx: this.context() });
+    globalThis.addEventListener("pointermove", this.#onPointer, { passive: true });
 
     this.#readAttributes();
+    // attributeChangedCallback fires before connect, when there is no face yet.
+    this.express(parseExpression(this.getAttribute("expression")));
     this.#resizeObserver = new ResizeObserver(() => this.#schedule());
     this.#resizeObserver.observe(this);
     this.#schedule();
@@ -118,6 +150,10 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
       cancelAnimationFrame(this.#frame);
       this.#frame = 0;
     }
+    globalThis.removeEventListener("pointermove", this.#onPointer);
+    const gaze = this.#gaze;
+    this.#gaze = null;
+    if (gaze !== null) void hsm.stop(gaze).catch(hsm.catchFailure(this));
     const face = this.#face;
     this.#face = null;
     if (face !== null) void hsm.stop(face).catch(hsm.catchFailure(this));
@@ -135,6 +171,14 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
   /** Show an expression. */
   express(expression: ExpressionName): void {
     this.#send(Face.expressEvent, { expression });
+  }
+
+  /** Look at a point, in -1..1 of the eyes' travel. The eyes wander again once it goes still. */
+  look(x: number, y: number): void {
+    const gaze = this.#gaze;
+    if (gaze === null) return;
+    void Promise.resolve(hsm.dispatch(gaze, hsm.typedEvent({ event: Gaze.lookEvent, data: { x, y } })))
+      .catch(hsm.catchFailure(this));
   }
 
   /** Blink once, now. */
@@ -188,15 +232,51 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
     const right = this.#right;
     if (face === null || left === null || right === null) return;
 
-    const shapes = face.shapes();
-    this.#paintOne(left, shapes.left, "left");
-    this.#paintOne(right, shapes.right, "right");
+    const pair = EXPRESSIONS[face.expression];
+    const target = { left: EYE_SHAPES[pair.left], right: EYE_SHAPES[pair.right] };
+    const shown = this.#shown === null
+      ? target
+      : {
+        left: blendShape(this.#shown.left, target.left, EXPRESSION_EASE),
+        right: blendShape(this.#shown.right, target.right, EXPRESSION_EASE),
+      };
+    const settled = shapeClose(shown.left, target.left) && shapeClose(shown.right, target.right);
+    this.#shown = settled ? target : shown;
 
-    // Lids move through timed states, so keep painting while one is in flight.
-    if (face.left?.lid !== 1 || face.right?.lid !== 1) this.#schedule();
+    if (this.#lastExpression !== null && this.#lastExpression !== face.expression) this.#popAt = performance.now();
+    this.#lastExpression = face.expression;
+
+    this.#trackPointer();
+    const gaze = this.#gaze;
+    this.#look.x += ((gaze?.x ?? 0) - this.#look.x) * GAZE_EASE;
+    this.#look.y += ((gaze?.y ?? 0) - this.#look.y) * GAZE_EASE;
+    this.#lids.left += ((face.left?.lid ?? 1) - this.#lids.left) * LID_EASE;
+    this.#lids.right += ((face.right?.lid ?? 1) - this.#lids.right) * LID_EASE;
+
+    // Breathing, plus a springy pop when the expression changes.
+    const now = performance.now();
+    const since = now - this.#popAt;
+    const pop = since < 700 ? 0.14 * Math.exp(-since / 160) * Math.cos(since / 45) : 0;
+    const breath = 0.018 * Math.sin(now / 950);
+
+    this.#paintOne(left, withOpenness(this.#shown.left, this.#lids.left), "left", pop, breath);
+    this.#paintOne(right, withOpenness(this.#shown.right, this.#lids.right), "right", pop, breath);
+
+    // The face is alive: it breathes and looks around, so it paints every frame while on the page.
+    this.#schedule();
   }
 
-  #paintOne(canvas: HTMLCanvasElement, shape: ReturnType<Face["shapes"]>["left"], side: "left" | "right"): void {
+  #trackPointer(): void {
+    const pointer = this.#pointer;
+    this.#pointer = null;
+    if (pointer === null || !this.hasAttribute("track")) return;
+    const box = this.getBoundingClientRect();
+    const x = (pointer.x - (box.left + box.width / 2)) / TRACK_REACH_PX;
+    const y = (pointer.y - (box.top + box.height / 2)) / TRACK_REACH_PX;
+    this.look(x, y);
+  }
+
+  #paintOne(canvas: HTMLCanvasElement, shape: EyeShape, side: "left" | "right", pop: number, breath: number): void {
     const ctx = resizeCanvasToHost(canvas, 64, 64);
     if (!ctx) return;
     const ratio = Math.max(1, globalThis.devicePixelRatio || 1);
@@ -206,7 +286,20 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
       ctx.fillStyle = this.#background;
       ctx.fillRect(0, 0, width, height);
     }
-    drawEye({ ctx, width, height, shape, side, fill: this.#fill });
+    // A closing lid squashes the eye a little wider, like it is being pressed shut.
+    const squash = 0.1 * (1 - shape.openness / Math.max(0.001, EYE_SHAPES.normal.openness));
+    drawEye({
+      ctx,
+      width,
+      height,
+      shape,
+      side,
+      fill: this.#fill,
+      lookX: this.#look.x,
+      lookY: this.#look.y,
+      scaleX: 1 + pop * 0.6 + Math.max(0, squash),
+      scaleY: 1 + pop + breath,
+    });
   }
 
   /** Host model: the element is a machine, even though the Face owns behavior. */
@@ -215,6 +308,15 @@ export class BotFaceElement extends hsm.from(HTMLElement) {
     hsm.initial(hsm.target("live")),
     hsm.state("live"),
   );
+}
+
+function shapeClose(a: EyeShape, b: EyeShape): boolean {
+  return Math.abs(a.width - b.width) < 0.002
+    && Math.abs(a.height - b.height) < 0.002
+    && Math.abs(a.topTilt - b.topTilt) < 0.002
+    && Math.abs(a.bottomTilt - b.bottomTilt) < 0.002
+    && Math.abs(a.skew - b.skew) < 0.002
+    && Math.abs(a.roundness - b.roundness) < 0.002;
 }
 
 export function defineBotFaceElement(): void {

@@ -152,3 +152,23 @@ describe("Face lifetime", () => {
     assert.equal(hsm.hostWasStopped(face), true);
   });
 });
+
+describe("Gaze", () => {
+  test("looking tracks the point, then wanders back after going still", async () => {
+    const { Gaze, startGaze } = await import("../src/face/gaze.ts");
+    const gaze = startGaze({ ctx: new hsm.Context() });
+    try {
+      assert.match(gaze.state(), /\/wandering\//);
+      await hsm.dispatch(gaze, hsm.typedEvent({ event: Gaze.lookEvent, data: { x: 3, y: -0.5 } }));
+      assert.match(gaze.state(), /\/tracking$/);
+      assert.equal(gaze.x, 1, "clamped to travel");
+      assert.equal(gaze.y, -0.5);
+      await hsm.dispatch(gaze, hsm.typedEvent({ event: Gaze.lookEvent, data: { x: Number.NaN, y: 0 } }));
+      assert.equal(gaze.x, 1, "bad point ignored");
+      await hsm.dispatch(gaze, hsm.typedEvent({ event: Gaze.wanderEvent }));
+      assert.match(gaze.state(), /\/wandering\//);
+    } finally {
+      await hsm.stop(gaze);
+    }
+  });
+});

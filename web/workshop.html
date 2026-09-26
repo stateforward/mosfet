@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mosfet workshop</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; block-size: 100%; background: #0c0d10; color: #eef0f4; font: 15px/1.5 system-ui, sans-serif; }
+      body { display: grid; grid-template-rows: auto 1fr; }
+      .top { display: flex; justify-content: space-between; align-items: center; padding: .8rem 16px; border-bottom: 1px solid #22252c; }
+      .top b { font-weight: 650; }
+      .top nav { display: flex; gap: 1rem; font-size: 14px; }
+      .top a { color: #8f96a6; text-decoration: none; }
+      .top a:hover { color: #eef0f4; }
+      main { min-block-size: 0; display: grid; justify-items: center; padding: 1rem 16px; }
+      mosfet-chat { inline-size: min(44rem, 100%); block-size: 100%; }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <b>mosfet workshop</b>
+      <nav><a href="/">home</a><a href="/topology.html">topology</a><a href="/face.html">bot</a></nav>
+    </header>
+    <main><mosfet-chat></mosfet-chat></main>
+    <script type="module" src="/src/playground/main.ts"></script>
+  </body>
+</html>

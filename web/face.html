@@ -1,31 +1,115 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>bot-face</title>
+<title>bot tuning</title>
 <style>
   body { background:#0d1117; color:#c9d1d9; font:14px system-ui; display:grid; gap:2rem; place-items:center; min-height:100vh; }
   bot-face { block-size:9rem; inline-size:22rem; }
   .row { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center; }
   button { background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:.4rem .7rem; cursor:pointer; }
+  #views bot-critter { block-size:12rem; inline-size:13rem; }
+  #views figure { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:.5rem; }
+  #gallery bot-critter { block-size:7rem; inline-size:7rem; }
+  figure { margin:0; text-align:center; }
   code { color:#26d1a2; }
+  #tuner { display:grid; grid-template-columns:repeat(auto-fill,minmax(15rem,1fr)); gap:.4rem 1.5rem; inline-size:min(60rem,94vw); background:#161b22; border:1px solid #30363d; border-radius:10px; padding:1rem; }
+  #tuner label { display:grid; grid-template-columns:7.5rem 1fr 3rem; align-items:center; gap:.5rem; font-size:13px; }
+  #tuner output { font:12px ui-monospace,monospace; color:#26d1a2; text-align:end; }
+  #tuner input { inline-size:100%; accent-color:#26d1a2; }
+  #tuner .actions { grid-column:1/-1; display:flex; gap:.5rem; justify-content:flex-end; }
 </style>
-<bot-face expression="normal"></bot-face>
+<bot-critter expression="normal" track ink="#26d1a2" eye="#0d1117" style="inline-size:34rem;block-size:16rem;max-inline-size:100%"></bot-critter>
 <div class="row" id="expressions"></div>
 <div class="row">
   <button data-do="blink">blink</button>
   <button data-do="sleep">sleep</button>
   <button data-do="wake">wake</button>
+  <button data-do="spin">spin</button>
+  <button data-roll="-1">roll left</button>
+  <button data-roll="0">roll center</button>
+  <button data-roll="1">roll right</button>
 </div>
+<div class="row">
+  <span style="align-self:center;color:#8b949e">hold view:</span>
+  <button data-hold="front">front</button>
+  <button data-hold="left">facing left</button>
+  <button data-hold="right">facing right</button>
+  <button data-hold="back">back</button>
+  <button id="release">release</button>
+</div>
+<p style="margin:0;color:#8b949e">poke it in the eye (or the body). three quick pokes and it runs off.</p>
 <code id="state"></code>
+<div class="row" id="views"></div>
+<form id="tuner" autocomplete="off" onsubmit="return false">
+  <div class="actions"><button type="button" id="reset">reset</button><button type="button" id="copy">copy values</button></div>
+</form>
+<div class="row" id="gallery"></div>
 <script type="module">
-  import { defineBotFaceElement } from "/src/face/index.ts";
+  import { defineBotFaceElement, defineBotCritterElement } from "/src/face/index.ts";
   defineBotFaceElement();
-  const face = document.querySelector("bot-face");
+  defineBotCritterElement();
+  const face = document.querySelector("bot-critter");
   for (const name of ["normal","happy","worried","focused","sleepy","angry","surprised","skeptic"]) {
     const b = document.createElement("button");
     b.textContent = name;
     b.onclick = () => face.express(name);
     document.getElementById("expressions").append(b);
+    const g = document.createElement("figure");
+    g.innerHTML = `<bot-critter expression="${name}" track ink="#26d1a2" eye="#0d1117"></bot-critter><figcaption>${name}</figcaption>`;
+    document.getElementById("gallery").append(g);
   }
-  for (const b of document.querySelectorAll("[data-do]")) b.onclick = () => face[b.dataset.do]();
-  setInterval(() => { document.getElementById("state").textContent = face.faceState(); }, 100);
+  for (const b of document.querySelectorAll("[data-do]")) b.onclick = () => face[b.dataset.do]?.();
+  for (const b of document.querySelectorAll("[data-roll]")) b.onclick = () => face.roll(Number(b.dataset.roll));
+  // Held views apply to every critter on the page, so the gallery shows each expression from that side too.
+  for (const b of document.querySelectorAll("[data-hold]")) b.onclick = () => { for (const c of document.querySelectorAll("bot-critter")) c.hold(b.dataset.hold); };
+  document.getElementById("release").onclick = () => { for (const c of document.querySelectorAll("bot-critter")) c.release(); };
+  // View mosaic: the same bot held front, facing left, and facing right.
+  for (const [view, label] of [["front", "front"], ["left", "facing left"], ["right", "facing right"]]) {
+    const fig = document.createElement("figure");
+    fig.innerHTML = `<bot-critter expression="normal" ink="#26d1a2" eye="#0d1117"></bot-critter><figcaption>${label}</figcaption>`;
+    document.getElementById("views").append(fig);
+    fig.querySelector("bot-critter").hold(view);
+  }
+  const sliders = [
+    ["shellSize", "drum radius", 0.1, 0.35, 0.005],
+    ["drumCornerRadius", "drum corner radius", 0, 1, 0.02],
+    ["shellLength", "drum length", 0.1, 0.7, 0.01],
+    ["armSwing", "arm swing", -80, 80, 1],
+    ["armLength", "arm length", 0.3, 2.5, 0.01],
+    ["armPivot", "arm mount y", -1, 1, 0.01],
+    ["armWidth", "arm width", 0.01, 0.25, 0.002],
+    ["armCornerRadius", "arm corner radius", 0, 1, 0.02],
+    ["wheelRadius", "wheel size", 0.06, 0.25, 0.005],
+    ["wheelThickness", "wheel thickness", 0.3, 1.8, 0.05],
+    ["wheelRoundness", "wheel roundness", 0, 1, 0.05],
+    ["treadCount", "tread count", 4, 30, 1],
+    ["stalkLength", "stalk length", 0.15, 0.6, 0.01],
+    ["stalkWidth", "stalk thickness", 0.01, 0.08, 0.002],
+    ["stalkSpread", "stalk spread", 0, 0.5, 0.01],
+    ["eyeRadius", "eye size", 0.05, 0.2, 0.005],
+    ["pupilShade", "pupil darkness", 0, 0.8, 0.05],
+    ["tireShade", "wheel darkness", 0, 0.9, 0.05],
+    ["armShade", "arm darkness", 0, 1, 0.05],
+  ];
+  const critters = () => document.querySelectorAll("bot-critter");
+  const tuner = document.getElementById("tuner");
+  const defaults = face.tuning;
+  for (const [key, label, min, max, step] of sliders) {
+    const row = document.createElement("label");
+    row.innerHTML = `<span>${label}</span><input type="range" name="${key}" min="${min}" max="${max}" step="${step}" value="${defaults[key]}"><output>${defaults[key]}</output>`;
+    const input = row.querySelector("input");
+    input.oninput = () => {
+      row.querySelector("output").textContent = input.value;
+      for (const c of critters()) c.tune({ [key]: Number(input.value) });
+    };
+    tuner.insertBefore(row, tuner.querySelector(".actions"));
+  }
+  document.getElementById("reset").onclick = () => {
+    for (const input of tuner.querySelectorAll("input")) { input.value = defaults[input.name]; input.dispatchEvent(new Event("input")); }
+  };
+  document.getElementById("copy").onclick = async (event) => {
+    await navigator.clipboard.writeText(JSON.stringify(face.tuning, null, 2));
+    event.target.textContent = "copied";
+    setTimeout(() => { event.target.textContent = "copy values"; }, 1200);
+  };
+  setInterval(() => { document.getElementById("state").textContent = face.faceState() + "  " + face.driveState() + "  " + face.reactionState(); }, 100);
 </script>

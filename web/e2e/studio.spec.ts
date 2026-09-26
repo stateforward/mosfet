@@ -38,7 +38,7 @@ function shotPath(name: string): string {
 }
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/workshop.html");
   await expect(page.getByTestId("inspector")).toBeVisible();
   await expect(page.getByTestId("canvas")).toBeVisible();
   await expect(page.getByTestId("live-badge")).toHaveText(/live|connecting/i);

@@ -18,7 +18,14 @@ function otelCollectorPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [otelCollectorPlugin()],
+  build: {
+    rollupOptions: {
+      input: { site: "index.html", workshop: "workshop.html", face: "face.html", playground: "playground.html" },
+    },
+  },
   server: {
     port: 5173,
+    // The playground chat talks to the library through the local bridge in ../playground.
+    proxy: { "/api": "http://127.0.0.1:8787" },
   },
 });
