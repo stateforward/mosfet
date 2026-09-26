@@ -81,7 +81,7 @@ _ENV_FILES = (
     pathlib.Path.home() / "VSCode" / "stateforward" / "bot" / "bot.py" / ".env",
     _WORKSHOP / ".env",
 )
-_REASONING_MODEL = "glm-5.3-flash-exl3"
+_REASONING_MODEL = "sparks/GLM-5.3-Flash-EXL3"
 _LLM_BASE_URL = os.environ.get("BOT_LLM_BASE_URL") or "https://cpa.willen.dev/v1"
 _MAX_TEXT = 4000
 _REPLY_TIMEOUT_S = 90.0
@@ -89,6 +89,130 @@ _IDLE_S = 30 * 60
 """A session nobody has texted for this long has its mosfet stopped."""
 _VISITOR = "visitor"
 """The browser's address on the line: every message from the web UI is from this sender."""
+
+
+class Bench:
+    """The real teach/run loop.
+
+    A paid run gives the job to the model and keeps what it produced. Teaching
+    distills your one correction into a rule. Every run after that fires the
+    pinned rule from disk: no model call, cost zero. The rule file is the
+    product — the thing that makes the second run free.
+    """
+
+    _RULES_PATH = pathlib.Path(os.environ.get("BOT_RULES_PATH") or (_WORKSHOP / ".data" / "rules.json"))
+
+    def __init__(self, settings: dict[str, str]) -> None:
+        self.api_key = _first(settings, "BOT_LLM_API_KEY", "BOT_OPENAI_API_KEY", "OPENAI_API_KEY") or ""
+        self.model = os.environ.get("BOT_BENCH_MODEL") or "sparks/GLM-5.3-Flash-EXL3"
+        self.rules_path = self._RULES_PATH
+        self.rules: dict[str, dict[str, typing.Any]] = {}
+        if self.rules_path.exists():
+            try:
+                loaded = json.loads(self.rules_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    self.rules = {str(k): v for k, v in loaded.items() if isinstance(v, dict)}
+            except (json.JSONDecodeError, OSError):
+                _LOG.warning("rules file unreadable, starting empty: %s", self.rules_path)
+        self.last_run: dict[str, dict[str, typing.Any]] = {}
+
+    # -- persistence -------------------------------------------------------
+
+    def _save(self) -> None:
+        self.rules_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.rules_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(self.rules, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(self.rules_path)
+
+    # -- model -------------------------------------------------------------
+
+    def _complete(self, system: str, user: str) -> str:
+        client = openai_compat.ChatClient(model=self.model, base_url=_LLM_BASE_URL, api_key=self.api_key)
+        response = client.create_chat_completion(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        choices = response.get("choices") if isinstance(response, dict) else None
+        message = choices[0].get("message") if isinstance(choices, list) and choices else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("model returned no content")
+        return content
+
+    @staticmethod
+    def _json_block(text: str) -> dict[str, typing.Any] | None:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            return None
+        try:
+            parsed = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    # -- endpoints ---------------------------------------------------------
+
+    def list_rules(self) -> dict[str, object]:
+        return {"rules": self.rules, "model": self.model}
+
+    def forget(self, task: str) -> dict[str, object]:
+        self.rules.pop(task, None)
+        self._save()
+        return {"task": task, "forgotten": True}
+
+    def run(self, task: str, ask: str) -> dict[str, object]:
+        rule = self.rules.get(task)
+        if rule is not None:
+            return {
+                "mode": "free",
+                "cost": 0.0,
+                "steps": rule.get("steps") or [],
+                "result": rule.get("result") or "",
+                "skill": rule.get("skill") or "",
+            }
+        if not self.api_key:
+            return {"mode": "paid", "problem": "no model key configured"}
+        raw = self._complete(
+            "You are mosfet, a small software robot doing a real job. "
+            'Respond with ONLY JSON: {"steps":["..."],"result":"..."} '
+            "where steps are 3-6 short past-tense actions you took and result is the deliverable, one sentence.",
+            ask,
+        )
+        parsed = self._json_block(raw) or {"steps": [], "result": raw.strip()[:400]}
+        run = {
+            "steps": [str(s) for s in (parsed.get("steps") or [])][:8],
+            "result": str(parsed.get("result") or "")[:600],
+        }
+        self.last_run[task] = run
+        return {"mode": "paid", "cost": 0.04, **run}
+
+    def teach(self, task: str, correction: str) -> dict[str, object]:
+        last = self.last_run.get(task) or {}
+        if not self.api_key:
+            return {"problem": "no model key configured"}
+        raw = self._complete(
+            "You are mosfet's teacher. You are given what the bot did and the one correction it was told. "
+            'Distill the correction into a rule. Respond with ONLY JSON: '
+            '{"skill":"one short phrase naming what it learned","steps":["..."],"result":"..."} '
+            "where steps are 3-6 short past-tense actions that now include the correction, and result is "
+            "the corrected deliverable, one sentence.",
+            f"Task: {task}\nWhat the bot did: {json.dumps(last)}\nCorrection: {correction}",
+        )
+        parsed = self._json_block(raw)
+        if parsed is None or not parsed.get("skill"):
+            return {"problem": "could not distill a rule from that correction"}
+        rule = {
+            "skill": str(parsed["skill"])[:200],
+            "steps": [str(s) for s in (parsed.get("steps") or [])][:8],
+            "result": str(parsed.get("result") or "")[:600],
+            "learned_from": correction[:400],
+        }
+        self.rules[task] = rule
+        self._save()
+        return {"task": task, "skill": rule["skill"], **rule}
 
 
 def _settings() -> dict[str, str]:
@@ -365,7 +489,7 @@ class Workshop:
 _SESSION_PATH = re.compile(r"^/api/session/([0-9a-f]{32})/end$")
 
 
-def _handler(workshop: Workshop) -> type[BaseHTTPRequestHandler]:
+def _handler(workshop: Workshop, bench: Bench) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "mosfet-workshop/0.2"
 
@@ -388,6 +512,8 @@ def _handler(workshop: Workshop) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:  # noqa: N802
             if self.path == "/api/health":
                 self._send(200, {"ready": workshop.ready, "model": workshop.model, "problem": workshop.problem})
+            elif self.path == "/api/bench/rules":
+                self._send(200, bench.list_rules())
             else:
                 self._send(404, {"problem": "not found"})
 
@@ -400,6 +526,9 @@ def _handler(workshop: Workshop) -> type[BaseHTTPRequestHandler]:
             if ended:
                 workshop.close(ended.group(1))
                 self._send(200, {"session": None, "problem": None})
+                return
+            if self.path.startswith("/api/bench/"):
+                self._bench_post()
                 return
             if self.path != "/api/sms":
                 self._send(404, {"problem": "not found"})
@@ -415,6 +544,35 @@ def _handler(workshop: Workshop) -> type[BaseHTTPRequestHandler]:
                 return
             reply, problem, known = workshop.reply(session_id, text)
             self._send(200 if known else 404, {"reply": reply, "problem": problem})
+
+        def _bench_post(self) -> None:
+            data = self._json()
+            if data is None:
+                self._send(400, {"problem": "expected JSON"})
+                return
+            task = str(data.get("task", "")).strip()[:80]
+            if self.path == "/api/bench/run":
+                ask = str(data.get("ask", "")).strip()[:2000]
+                if not task or not ask:
+                    self._send(400, {"problem": 'Expected {"task": "...", "ask": "..."}.'})
+                    return
+                try:
+                    self._send(200, bench.run(task, ask))
+                except Exception as error:  # noqa: BLE001 — the bench reports failures honestly
+                    self._send(502, {"problem": f"run failed: {error}"})
+            elif self.path == "/api/bench/teach":
+                correction = str(data.get("correction", "")).strip()[:2000]
+                if not task or not correction:
+                    self._send(400, {"problem": 'Expected {"task": "...", "correction": "..."}.'})
+                    return
+                try:
+                    self._send(200, bench.teach(task, correction))
+                except Exception as error:  # noqa: BLE001
+                    self._send(502, {"problem": f"teach failed: {error}"})
+            elif self.path == "/api/bench/forget":
+                self._send(200, bench.forget(task))
+            else:
+                self._send(404, {"problem": "not found"})
 
         @typing.override
         def log_message(self, format: str, *args: typing.Any) -> None:  # noqa: A002
@@ -441,9 +599,10 @@ def main() -> int:
         # OpenTelemetry SDK. Say so on every start and run without telemetry.
         _LOG.error("mosfet telemetry is broken, running without it: %s", error)
     workshop = Workshop()
+    bench = Bench(_settings())
     status = "ready" if workshop.problem is None else workshop.problem
     print(f"mosfet workshop on http://127.0.0.1:{args.port} ({status})", flush=True)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), _handler(workshop))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), _handler(workshop, bench))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
