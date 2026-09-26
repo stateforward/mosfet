@@ -18,39 +18,57 @@ export const BENCH_TASKS: readonly BenchTask[] = [
 ];
 
 const STYLE = `
-:host { display: grid; gap: .8rem; color: inherit; font: 14px/1.5 system-ui, sans-serif; }
+:host {
+  --paper: #f2ede3;
+  --panel: #ffffff;
+  --ink: #141414;
+  --ink-2: #57524a;
+  --rule: #d5ccbb;
+  --signal: #ff5a1f;
+  --mint: #1fbf8f;
+  --serif: "Instrument Serif", "Times New Roman", serif;
+  --sans: "Inter Tight", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  display: grid; gap: .8rem; color: var(--ink); font: 15px/1.5 var(--sans);
+}
 .panel {
   display: grid; gap: .8rem;
-  background: #12141a; border: 1px solid #2a3140; border-radius: 16px; padding: 1rem;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 18px; padding: 1.1rem;
+  box-shadow: 0 24px 60px -32px rgba(20, 20, 20, .25);
 }
 header { display: flex; align-items: center; gap: .8rem; }
 bot-critter { block-size: 3.2rem; inline-size: 4rem; flex: none; }
-.who { flex: 1; } .who b { display: block; font-size: 15px; } .who span { color: #8b93a7; font-size: 12.5px; }
+.who { flex: 1; } .who b { display: block; font-size: 17px; letter-spacing: -0.01em; } .who span { color: var(--ink-2); font-size: 13px; }
 .meter {
-  font: 600 14px ui-monospace, Menlo, monospace; padding: .3rem .55rem; border-radius: 8px;
-  border: 1px solid #2a3140; font-variant-numeric: tabular-nums; transition: color .3s, border-color .3s;
+  font: 600 14px var(--mono); padding: .3rem .55rem; border-radius: 999px;
+  border: 1px solid var(--rule); font-variant-numeric: tabular-nums; transition: color .3s, border-color .3s, background .3s;
 }
-.meter[data-mode="paid"] { color: #f5b25b; border-color: #f5b25b73; }
-.meter[data-mode="free"] { color: #2dd4bf; border-color: #2dd4bf73; }
+.meter[data-mode="paid"] { color: #fff; background: var(--signal); border-color: var(--signal); }
+.meter[data-mode="free"] { color: var(--mint); background: #1fbf8f1a; border-color: var(--mint); }
 .tasks { display: flex; gap: .4rem; flex-wrap: wrap; }
 button {
-  background: #1a1e25; color: #c9d1d9; border: 1px solid #2a3140; border-radius: 8px;
-  padding: .35rem .7rem; cursor: pointer; font: inherit; font-size: 13px;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 999px;
+  padding: .4rem .8rem; cursor: pointer; font: inherit; font-size: 13.5px; font-weight: 500;
+  transition: border-color .2s, color .2s, background .2s;
 }
-button[aria-pressed="true"] { border-color: #2dd4bf; color: #2dd4bf; }
+button:hover { border-color: var(--ink); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--signal); color: #fff; border-color: var(--signal); font-weight: 600; }
+button.primary:hover { background: var(--ink); border-color: var(--ink); }
 .run { display: grid; gap: .45rem; min-block-size: 6rem; }
-ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .25rem; font: 13px ui-monospace, Menlo, monospace; }
-li { display: flex; gap: .5rem; } li .cost { color: #f5b25b; } li .cost.free { color: #2dd4bf; }
-.result { color: #c9d1d9; font-size: 13.5px; }
+ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; font: 13px var(--mono); }
+li { display: flex; gap: .5rem; } li .cost { color: var(--signal); font-weight: 600; } li .cost.free { color: var(--mint); }
+.result { color: var(--ink); font-size: 14px; margin: 0; }
 .teach { display: flex; gap: .4rem; }
 input {
-  flex: 1; background: #0d1117; color: #e8eaef; border: 1px solid #2a3140;
-  border-radius: 8px; padding: .4rem .6rem; font: inherit; font-size: 13.5px;
+  flex: 1; min-inline-size: 0; background: var(--paper); color: var(--ink); border: 1px solid var(--rule);
+  border-radius: 999px; padding: .5rem .9rem; font: inherit; font-size: 13.5px;
 }
-.problem { color: #f85149; font-size: 13px; }
-.status { color: #8b93a7; font-size: 12.5px; min-block-size: 1.1em; }
-.skill { color: #2dd4bf; font-size: 13px; }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.problem { color: #c23c0c; font-size: 13px; }
+.status { color: var(--ink-2); font: 12.5px var(--mono); min-block-size: 1.1em; }
+.skill { color: var(--mint); font: 600 13px var(--mono); }
 `;
 
 export class MosfetBench extends HTMLElement {
@@ -126,6 +144,7 @@ export class MosfetBench extends HTMLElement {
     teach.append(this.#correction, this.#teachBtn);
 
     this.#runBtn = document.createElement("button");
+    this.#runBtn.className = "primary";
     this.#runBtn.textContent = `run: ${this.#task.label}`;
     this.#runBtn.addEventListener("click", () => void this.#run());
 

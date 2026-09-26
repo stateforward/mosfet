@@ -4,29 +4,55 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>mosfet workshop</title>
+    <meta name="description" content="Run a mosfet bot, correct it once, watch every run after come back free." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/site/site.css" />
     <style>
-      :root { color-scheme: dark; }
-      html, body { margin: 0; block-size: 100%; background: #0c0d10; color: #eef0f4; font: 15px/1.5 system-ui, sans-serif; }
-      body { display: grid; grid-template-rows: auto 1fr; }
-      .top { display: flex; justify-content: space-between; align-items: center; padding: .8rem 16px; border-bottom: 1px solid #22252c; }
-      .top b { font-weight: 650; }
-      .top nav { display: flex; gap: 1rem; font-size: 14px; }
-      .top a { color: #8f96a6; text-decoration: none; }
-      .top a:hover { color: #eef0f4; }
-      main { min-block-size: 0; display: grid; justify-items: center; align-content: start; gap: 1.2rem; padding: 1rem 16px; }
-      mosfet-chat { inline-size: min(44rem, 100%); block-size: 32rem; }
-      mosfet-bench { inline-size: min(44rem, 100%); }
+      body { display: grid; grid-template-rows: auto auto 1fr; min-block-size: 100%; }
+      .workshop-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-block: 1.1rem; position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--paper) 85%, transparent); backdrop-filter: blur(10px); }
+      .workshop-top .mark { display: flex; align-items: center; gap: .5rem; font: 600 19px var(--sans); letter-spacing: -0.02em; text-decoration: none; }
+      .workshop-top .mark bot-critter { inline-size: 2.1rem; block-size: 1.8rem; }
+      .workshop-top nav { display: flex; gap: 1.6rem; align-items: center; font-size: 15px; }
+      .workshop-top nav a { text-decoration: none; }
+      .workshop-top nav a:not(.pill):hover { text-decoration: underline; text-underline-offset: 4px; }
+      .workshop-top nav a.pill { background: var(--ink); color: var(--paper); border-radius: 999px; padding: .5rem 1rem; font-weight: 500; }
+      .workshop-top nav a.pill:hover { background: var(--signal); }
+      .bench-head { max-inline-size: 90rem; margin-inline: auto; padding-inline: clamp(16px, 4vw, 48px); width: 100%; }
+      .bench-head h1 { font: 400 clamp(2.6rem, 7vw, 5.5rem)/.95 var(--serif); letter-spacing: -0.03em; margin: 1.2rem 0 .4rem; }
+      .bench-head h1 em { color: var(--signal); }
+      .bench-head .lede { font-size: clamp(1rem, 1.6vw, 1.25rem); color: var(--ink-2); max-inline-size: 38rem; margin: 0 0 1.5rem; }
+      .bench-head .lede b { color: var(--ink); font-family: var(--mono); font-weight: 600; background: #c9f2e2; padding: 0 .25em; border-radius: 4px; }
+      main { min-block-size: 0; display: grid; justify-items: center; align-content: start; gap: 1.6rem; padding: 0 16px 3rem; }
+      mosfet-bench { inline-size: min(56rem, 100%); }
+      mosfet-chat {
+        inline-size: min(56rem, 100%); block-size: 34rem;
+        --chat-accent: var(--signal);
+        --chat-ink: var(--ink);
+        --chat-muted: var(--ink-2);
+        --chat-panel: #ffffff;
+        --chat-line: var(--rule);
+        --chat-sans: var(--sans);
+      }
+      mosfet-chat li[data-who="you"] { color: #fff; }
+      footer { text-align: center; color: var(--ink-2); font: 500 13px var(--mono); padding-block: 2rem; }
     </style>
   </head>
   <body>
-    <header class="top">
-      <b>mosfet workshop</b>
-      <nav><a href="/">home</a><a href="/topology.html">topology</a><a href="/face.html">bot</a></nav>
+    <header class="workshop-top">
+      <a class="mark" href="/"><bot-critter class="mark-face" expression="happy"></bot-critter> mosfet</a>
+      <nav><a href="/">home</a><a href="/topology.html">topology</a><a href="/face.html">bot</a><a class="pill" href="/">get a bot <span aria-hidden="true">↘</span></a></nav>
     </header>
+    <div class="bench-head">
+      <h1>The <em>workshop</em></h1>
+      <p class="lede">Run the bot on a real job. Correct it once, in plain words. Every run after that is <b>$0.00</b> — the rule is pinned, no model call.</p>
+    </div>
     <main>
       <mosfet-bench></mosfet-bench>
       <mosfet-chat></mosfet-chat>
     </main>
+    <footer>run it · correct it once · it stays learned</footer>
     <script type="module">
       import { registerMosfetBench } from "/src/bench/mosfet-bench.ts";
       registerMosfetBench();
