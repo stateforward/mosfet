@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from build123d import Compound, Location, Pos, Rot
+from build123d import Compound, Pos, Rot
 
 from . import body as B
 from . import part as C
@@ -28,7 +28,8 @@ from .params import (
     docked_pose,
 )
 from .part import Part
-from .stalk import pod_parts, stalk_parts
+from .stalk import stalk_parts
+from .winch import winch_parts
 
 
 def _ref(name: str, shape, color=C.REF) -> Part:
@@ -85,9 +86,6 @@ def side_parts(side: int, s: StalkSpec, e: EyeSpec, swing: float, refs: bool) ->
         parts[i].print_pose = Rot(side * 90, 0, 0)
     parts[0].print_pose = Rot(side * 90, 0, 0)
 
-    pod_loc = Pos(B.POD_CENTRE[0], side * B.POD_CENTRE[1], B.POD_CENTRE[2]) * (Location() if side > 0 else Rot(0, 0, 180))
-    parts += pod_parts(pod_loc, s.tendons, f"{tag} ", refs)
-
     stalk, tip_top = stalk_parts(s, B.stalk_root(side), f"{tag} ")  # straight up the splayed pedestal: no bend at rest
     parts += stalk
     parts += eye_parts(e, s, tip_top, side, f"{tag} ", refs)
@@ -128,6 +126,7 @@ def bot(
         parts += [_ref(f"brass pad {n}", shape, C.METAL) for n, shape in B.pads(beta)]
     for side in (1, -1):
         parts += side_parts(side, s, e, swing, refs)  # docked, the whole bot (eyes too) pitches back pose["tilt"]
+    parts += winch_parts(B.stalk_root, refs)
 
     world = Pos(0, 0, pose["axis_z"]) * rot_xz(pose["tilt"])
     parts = [p.placed(world) for p in parts]

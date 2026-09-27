@@ -8,9 +8,10 @@ the spring; the tip plate, whose collar screws onto the spring's top turns and w
 The collars and discs grip the coil through a helical groove cut by the spring itself (plus a clearance), so they
 screw on and stay put without glue. The display lead runs up the middle of the spring.
 
-Each tendon has its own servo and single-groove pulley: a spring shortens when a tendon pulls it (about 9 mm at a
+Each tendon has its own worm-gear winch (`winch.py`): a spring shortens when a tendon pulls it (about 12 mm at a
 90 degree bend), so an antagonistic pair on one double pulley would go slack. Three at 120 degrees cover every
-bending direction, as in `sim/bot.py`.
+bending direction, as in `sim/bot.py`. The winches can't be back-driven, so the pretensioned tendons hold the stalk
+with no current; the spring is modelled squeezed by that pretension (`StalkSpec.installed_z`).
 """
 
 from __future__ import annotations
@@ -21,11 +22,10 @@ from functools import cache
 from build123d import Circle, Location, Plane, Polyline, Pos, Transition, Vector, sweep
 
 from . import part as P
-from .geom import box, cut, cyl, fuse, polar
-from .params import HORN_PCD, SERVO_H, SERVO_L, SERVO_SHAFT_OFF, SERVO_W, SpringSpec, StalkSpec
+from .geom import cut, cyl, fuse, polar
+from .params import SpringSpec, StalkSpec
 from .part import Part
 
-PULLEY_R = 10.0  # groove radius: 31 mm of tendon per 180 deg of servo
 COIL_SEGMENTS = 24  # per turn: the coil is a polyline sweep (a true helical sweep won't boolean in OCCT)
 
 
@@ -38,10 +38,11 @@ def bolt_xy(r: float, n: int = 3):
     return [polar(r, i * 360 / n) for i in range(n)]
 
 
-def coil(sp: SpringSpec, z0: float, z1: float, r: float):
+def coil(sp: SpringSpec, z0: float, z1: float, r: float, zmap=None):
     """The coil's wire between spring-frame heights z0 and z1, swept at radius r (the wire, or a groove cutter).
 
-    Spring frame: the spring's bottom end is z = 0; the wire centre rises from z = wire/2 at angle 0.
+    Spring frame: the spring's bottom end is z = 0; the wire centre rises from z = wire/2 at angle 0. `zmap` moves
+    each point of the free coil to where it sits installed (StalkSpec.installed_z); none leaves the coil free.
     """
     lo, hi = sp.wire / 2, sp.free_length - sp.wire / 2
     z0, z1 = max(z0, lo), min(z1, hi)
@@ -52,7 +53,8 @@ def coil(sp: SpringSpec, z0: float, z1: float, r: float):
     for i in range(n + 1):
         t = t0 + (t1 - t0) * i / n
         a = 2 * math.pi * t
-        pts.append(Vector(rm * math.cos(a), rm * math.sin(a), lo + t * p))
+        z = lo + t * p
+        pts.append(Vector(rm * math.cos(a), rm * math.sin(a), zmap(z) if zmap else z))
     profile = Plane(origin=pts[0], z_dir=pts[1] - pts[0]) * Circle(r)
     return sweep(profile, path=Polyline(*pts), transition=Transition.ROUND).solids()[0]
 
@@ -69,8 +71,10 @@ def _gripped(s: StalkSpec, body, z0: float, z1: float, bore_z: tuple[float, floa
 
 @cache
 def spring(s: StalkSpec):
-    """The spring in its own frame (bottom end at z = 0)."""
-    return coil(s.spring, 0, s.spring.free_length, s.spring.wire / 2)
+    """The spring in its own frame (bottom end at z = 0): installed, squeezed by the tendon pretension. A printed
+    spring stays free, since its part is also its print file."""
+    zmap = None if s.spring.printed else s.installed_z
+    return coil(s.spring, 0, s.spring.free_length, s.spring.wire / 2, zmap)
 
 
 @cache
@@ -116,59 +120,6 @@ def tip(s: StalkSpec):
     return cut(body, *tools)
 
 
-@cache
-def pulley():
-    """Single-groove pulley, one tendon each. Bolts to the stock horn."""
-    rg, fl = PULLEY_R, PULLEY_R + 2.5
-    body = fuse(cyl((0, 0, 0), (0, 0, 2), fl), cyl((0, 0, 2), (0, 0, 6), rg), cyl((0, 0, 6), (0, 0, 8), fl))
-    tools = [cyl((0, 0, -1), (0, 0, 9), 3.5)]
-    for i in range(4):
-        x, y = polar(HORN_PCD / 2, 45 + i * 90)
-        tools.append(cyl((x, y, -1), (x, y, 9), 1.1))
-    tools.append(cyl((-fl, 0, 4), (fl, 0, 4), 0.9))  # tendon anchor
-    return cut(body, *tools)
-
-
-POD_WALL = 2.5
-POD_FLOOR = 3.0
-POD_DEPTH = 28.0
-POD_TOP = POD_FLOOR + POD_DEPTH
-POD_FLANGE = 2.7
-POD_FLANGE_HOLES = (-30.0, 30.0)  # x offsets from the pod centre, at pod mid-height
-
-
-def pod_size(n: int = 3):
-    """Pocket x, pocket y, half outer x, half outer y of a pod holding n servos side by side."""
-    sx, sy = SERVO_W + 0.4, SERVO_L + 0.4
-    return sx, sy, (n * sx + (n + 1) * POD_WALL) / 2, sy / 2 + POD_WALL
-
-
-def servo_shafts(n: int = 3):
-    """Shaft (x, y) of each servo in pod coordinates."""
-    sx, sy, _, _ = pod_size(n)
-    y = -sy / 2 + SERVO_SHAFT_OFF
-    return [((i - (n - 1) / 2) * (sx + POD_WALL), y) for i in range(n)]
-
-
-@cache
-def servo_pod(n: int = 3):
-    """Holds a stalk's servos side by side, shafts up. The +y flange bolts to the end cap (2 x M3)."""
-    sx, sy, hx, hy = pod_size(n)
-    body = fuse(box((-hx, -hy, 0), (hx, hy, POD_TOP)), box((-hx, hy, 0), (hx, hy + POD_FLANGE, POD_TOP)))
-    tools = []
-    for cx, _ in servo_shafts(n):
-        tools.append(box((cx - sx / 2, -sy / 2, POD_FLOOR), (cx + sx / 2, sy / 2, POD_TOP + 1)))
-        for y in (-(sy / 2 - 6), sy / 2 - 6):  # M2 into the case bottom: UNVERIFIED pattern, check the STEP
-            tools.append(cyl((cx, y, -1), (cx, y, POD_FLOOR + 1), 1.1))
-    for x in POD_FLANGE_HOLES:
-        tools.append(cyl((x, hy - 1, POD_TOP / 2), (x, hy + POD_FLANGE + 1, POD_TOP / 2), 1.7))
-    return cut(body, *tools)
-
-
-def servo_ref():
-    return box((-SERVO_W / 2, -SERVO_L / 2, 0), (SERVO_W / 2, SERVO_L / 2, SERVO_H))
-
-
 def stalk_parts(s: StalkSpec, frame: Location, label: str = ""):
     """Base, spring, guide discs and tip, straight up the stalk frame. Returns (parts, tip-top frame)."""
     sp = s.spring
@@ -177,26 +128,9 @@ def stalk_parts(s: StalkSpec, frame: Location, label: str = ""):
     if not sp.printed:
         spring_part.name = f"REF {label}stalk spring ({sp.name})"
     parts = [Part(f"{label}stalk base", base(s), P.STALK, frame), spring_part]
+    zmap = (lambda z: z) if sp.printed else s.installed_z
     g = guide(s)
-    parts += [Part(f"{label}stalk guide {k + 1}", g, P.STALK, at * Pos(0, 0, z)) for k, z in enumerate(s.guide_z)]
-    top = at * Pos(0, 0, sp.free_length)
+    parts += [Part(f"{label}stalk guide {k + 1}", g, P.STALK, at * Pos(0, 0, zmap(z))) for k, z in enumerate(s.guide_z)]
+    top = at * Pos(0, 0, zmap(sp.free_length))
     parts.append(Part(f"{label}stalk tip", tip(s), P.STALK, top))
     return parts, top * Pos(0, 0, s.plate_t)
-
-
-def pod_parts(frame: Location, n: int = 3, label: str = "", refs: bool = True):
-    parts = [Part(f"{label}servo pod", servo_pod(n), P.INNER, frame)]
-    pul = pulley()
-    for i, (x, y) in enumerate(servo_shafts(n)):
-        if refs:
-            parts.append(
-                Part(
-                    f"REF {label}STS3215 {i + 1}",
-                    servo_ref(),
-                    P.REF,
-                    frame * Pos(x, y + SERVO_L / 2 - SERVO_SHAFT_OFF, POD_FLOOR),
-                    printed=False,
-                )
-            )
-        parts.append(Part(f"{label}tendon pulley {i + 1}", pul, P.STALK, frame * Pos(x, y, POD_FLOOR + SERVO_H + 4)))
-    return parts

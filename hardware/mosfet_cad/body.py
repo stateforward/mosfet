@@ -43,7 +43,8 @@ from .params import (
     WHEEL_R,
     WHEEL_W,
 )
-from .stalk import POD_FLANGE, POD_FLANGE_HOLES, POD_TOP, bolt_xy, pod_size, tendon_xy
+from .stalk import bolt_xy, tendon_xy
+from .winch import BACK_TABS, DECK_TABS
 
 RI = DRUM_R - SHELL  # drum inner radius
 CAP_IN = DRUM_L / 2 - CAP_T  # end cap inner face, |y|
@@ -62,11 +63,6 @@ TRAY_Z = (-43.0, -39.0)
 TRAY_X = (-67.0, 103.0)
 TRAY_TABS = (-40.0, 25.0)  # x of the tabs that bolt the tray to the end caps
 TAB_Z = TRAY_Z[1] + 9  # tab bolt height
-# Stalk servo pod, left side: (x, y, bottom z). Three servos side by side along x, low and forward: clear of the
-# arm gear and bearing boss above it, the shelf behind it and the regulators and tray tabs below it. Its flange
-# sits on the end cap's inner face.
-POD_CENTRE = (67.0, CAP_IN - POD_FLANGE - pod_size(STALK.tendons)[3], -20.0)
-
 MOTOR_R = MOTOR_D / 2 + 0.2  # clamp bore
 MOTOR_FACE = ARM_Y0 + ARM_T + 56  # gearbox face, |y|: the motor sits in a sleeve inside the wheel
 WHEEL_Y0 = ARM_Y0 + ARM_T + 1  # wheel inner face, |y|
@@ -131,7 +127,8 @@ def shell_lower(beta: float):
 
 
 def end_cap(side: int):
-    """Disc inside the drum end: carries the arm pivot on two 6805 bearings, the servos and the tray."""
+    """Disc inside the drum end: carries the arm pivot on two 6805 bearings, the arm servo, the tray, the winch deck and
+    the back winch."""
     y_in, y_out = side * CAP_IN, side * DRUM_L / 2
     body = fuse(
         cyl((0, y_in, 0), (0, y_out, 0), RI - 0.2),
@@ -154,7 +151,7 @@ def end_cap(side: int):
 
     tools += [insert(x, TAB_Z) for x in TRAY_TABS]  # tray tabs
     tools += [insert(sum(DRIVER_X) / 2, z) for z in DRIVER_BOLTS]  # driver mount
-    tools += [insert(POD_CENTRE[0] + dx, POD_CENTRE[2] + POD_TOP / 2) for dx in POD_FLANGE_HOLES]  # stalk pod
+    tools += [insert(x, z) for x, z in DECK_TABS + BACK_TABS]  # winch deck, back winch bracket
     tools += [insert(*p) for p in ARM_SERVO_POSTS]  # arm servo mount
     return cut(body, *tools)
 

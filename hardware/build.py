@@ -82,21 +82,94 @@ def clash_report(parts: list[Part], min_volume: float = 1.0) -> list[str]:
     return lines
 
 
-def stalk_report() -> str:
-    """The spring spine's numbers: what bends the stalk and what that costs the servos."""
-    from mosfet_cad.params import STALK
+TENDON_EA = 4350.0  # N: PowerPro Spectra 65 lb, ~0.079 mm2 of fibre at ~55 GPa (UNVERIFIED)
+TUBE_MU = 0.07  # Spectra on PTFE (UNVERIFIED): the capstan loss in a tube is exp(mu * its turning)
 
-    sp = STALK.spring
-    moment = sp.ei * (math.pi / 2) / (sp.free_length / 1000)  # N·m for a 90 degree constant-curvature bend
-    pull = moment / (STALK.tendon_r / 1000)
-    guides = ", ".join(f"{z:.0f}" for z in STALK.guide_z)
-    return (
-        f"\n== stalk spring: {sp.name} ({sp.material}, {'printed' if sp.printed else 'bought'}) ==\n"
-        f"OD {sp.od} x wire {sp.wire} x {sp.free_length:.0f} long, pitch {sp.pitch}, {sp.coils:.1f} coils, ID {sp.id:.1f}\n"
-        f"EI {sp.ei:.3f} N·m2, axial {sp.rate:.1f} N/mm; a 90 deg bend takes {moment:.2f} N·m: {pull:.0f} N of tendon "
-        f"at r {STALK.tendon_r}, and the spring shortens {pull / sp.rate:.1f} mm\n"
-        f"guide discs at {guides} mm up the spring"
+
+def bend_time(deg: float, friction: float = 1.0) -> float:
+    """Seconds for one winch to pull a straight stalk to deg degrees at 12 V, the other two paying out."""
+    from mosfet_cad.params import PULLEY_R, STALK, WINCH_MOTOR
+
+    s, m, t, steps = STALK, WINCH_MOTOR, 0.0, 180
+    for i in range(steps):
+        d0, d1 = deg * i / steps, deg * (i + 1) / steps
+        dl = s.tendon_r * math.radians(d1 - d0) + (s.pull(d1) - s.pull(d0)) / s.rate  # tendon taken in, mm
+        nm = s.pull((d0 + d1) / 2) * friction * PULLEY_R / 1000
+        t += dl / (m.rpm(nm) / 60 * 2 * math.pi * PULLEY_R)
+    return t
+
+
+def stalk_report() -> str:
+    """The spring spine's numbers: what bends the stalk, what holds it, and what that costs the winches."""
+    from mosfet_cad import body as B
+    from mosfet_cad.params import EYE, EYE_KG, PULLEY_R, SPECTRA_N, STALK, STALK_SPLAY, WINCH_LIMIT_A, WINCH_MOTOR
+    from mosfet_cad.winch import tube_runs, tube_turn_deg
+
+    s, sp, m = STALK, STALK.spring, WINCH_MOTOR
+    lines = [
+        f"\n== stalk spring: {sp.name} ({sp.material}, {'printed' if sp.printed else 'bought'}) ==",
+        (
+            f"OD {sp.od:.1f} x wire {sp.wire:.3f} x {sp.free_length:.1f} free, pitch {sp.pitch:.2f}, {sp.coils:.1f} coils, "
+            f"ID {sp.id:.1f}, mean D {sp.mean_d:.2f}; {sp.rate:.2f} N/mm as cut"
+        ),
+        (
+            f"collars and discs grip {sp.free_length - s.bend_length:.1f} mm; {s.bend_length:.1f} mm of free coil bends: "
+            f"{s.rate:.2f} N/mm installed"
+        ),
+        (
+            f"preload {s.tendons} x {s.pretension:.0f} N = {s.preload:.0f} N squeezes it {s.preload_shortening:.1f} mm, to "
+            f"{s.installed_length:.1f} (stalk {s.length:.1f} base to tip); EI {sp.ei:.3f} free, {s.ei:.3f} N·m2 installed"
+        ),
+    ]
+    for deg in (90.0, 120.0):
+        pull = s.pull(deg)
+        lines.append(
+            f"{deg:.0f} deg: {s.moment(deg):.2f} N·m at the root, {pull:.0f} N on the pulling tendon at r {s.tendon_r:.1f} "
+            f"({s.moment(deg) / (s.tendon_r / 1000):.0f} + {s.pretension:.0f} held by the others), "
+            f"{pull * PULLEY_R / 1000:.2f} N·m at the pulley; shortens {s.shortening(deg):.1f} mm more; "
+            f"{bend_time(deg):.1f} s at 12 V"
+        )
+    lever = s.plate_t + EYE.centre_z
+    w = EYE_KG * 9.81
+    crit = s.buckle_load(lever)
+    sag_free = STALK_SPLAY / (1 - w / crit)
+    tendon_l = s.length + 120  # stalk plus a tube run
+    k_tendons = 1.5 * TENDON_EA / (tendon_l / 1000) * (s.tendon_r / 1000) ** 2  # N·m/rad, three tendons at 120 deg
+    reach = (s.length + EYE.centre_z) / 1000
+    m_splay = w * reach * math.sin(math.radians(STALK_SPLAY))
+    sag_locked = math.degrees(m_splay / (k_tendons + s.ei / (s.bend_length * s.squeeze / 1000)))
+    lines.append(
+        f"eye {EYE_KG * 1000:.0f} g, {lever:.1f} over the spring: folds at {crit:.2f} N, {crit / w:.1f} x its weight; "
+        f"winches slack, the {STALK_SPLAY:.0f} deg splay would sag to {sag_free:.1f} deg; tendons locked, it sags "
+        f"{sag_locked:.2f} deg more (tendon stretch, EA {TENDON_EA:.0f} N)"
     )
+    rated_pull = m.rated_nm / (PULLEY_R / 1000)
+    limit_pull = m.torque(WINCH_LIMIT_A) / (PULLEY_R / 1000)
+    bind = math.degrees((1 - sp.wire / (sp.pitch * s.squeeze)) / (sp.mean_d / 2000) * s.bend_length * s.squeeze / 1000)
+    lines.append(
+        f"reach: {s.deg_at(rated_pull):.0f} deg at the rated {m.rated_nm} N·m ({rated_pull:.0f} N), "
+        f"{s.deg_at(limit_pull):.0f} deg at the {WINCH_LIMIT_A} A chop limit ({limit_pull:.0f} N, "
+        f"{limit_pull / SPECTRA_N:.0%} of the Spectra's {SPECTRA_N:.0f} N); the coils would bind at {bind:.0f} deg"
+    )
+    lines.append(f"guide discs at {', '.join(f'{z:.1f}' for z in s.guide_z)} mm up the free spring")
+    lines.append(f"\n== winches: 6 x {m.name}, {PULLEY_R:.0f} mm pulley ==")
+    lines.append(
+        f"{m.counts} counts/rev ({2 * math.pi * PULLEY_R / m.counts * 1000:.1f} um of tendon each); "
+        f"{m.kt:.2f} N·m/A over {m.no_load_a} A no-load; 0 A holding (worm, self-locking)"
+    )
+    runs = tube_runs(B.stalk_root)
+    worst = 1.0
+    for label, _, path in runs:
+        turn = tube_turn_deg(path)
+        cap = math.exp(TUBE_MU * math.radians(turn))
+        worst = max(worst, cap)
+        lines.append(f"PTFE {label}: {path.length:.0f} mm, turns {turn:.0f} deg, capstan x{cap:.2f} at mu {TUBE_MU}")
+    lines.append(
+        f"through the worst tube (x{worst:.2f}): 90 deg takes {s.pull(90) * worst * PULLEY_R / 1000:.2f} N·m and "
+        f"{bend_time(90, worst):.1f} s; reach {s.deg_at(rated_pull / worst):.0f} deg rated, "
+        f"{s.deg_at(limit_pull / worst):.0f} deg at the chop limit"
+    )
+    return "\n".join(lines)
 
 
 def export(parts: list[Part], printed: dict[str, tuple[Part, int]], name: str) -> None:

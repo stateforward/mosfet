@@ -56,9 +56,8 @@ BEARING_FIT = 0.05  # radial press allowance added to the pocket
 MOTOR_D, MOTOR_L = 37.0, 70.0  # Pololu 37D 50:1 w/ encoder (#4753), gearbox face to encoder cap
 MOTOR_SHAFT_L = 16.0
 POLOLU_HUB_PCD = 19.0  # UNVERIFIED: Pololu 1083 hub bolt circle
-SERVO_L, SERVO_W, SERVO_H = 45.2, 24.7, 35.0  # Feetech STS3215 / STS3250 case
+SERVO_L, SERVO_W, SERVO_H = 45.2, 24.7, 35.0  # Feetech STS3250 case (the arm servos)
 SERVO_SHAFT_OFF = 11.0  # UNVERIFIED: output shaft centre from the near end of the case
-HORN_PCD = 14.0  # UNVERIFIED: stock horn screw circle
 JETSON_BOARD = (100.0, 79.0)  # carrier PCB, NVIDIA SP-11324-001
 JETSON_HOLES = (86.0, 58.0)  # UNVERIFIED (scaled from the drawing)
 JETSON_HOLE_INSET = 4.0  # UNVERIFIED: hole centres from the left and top board edges
@@ -117,11 +116,29 @@ class SpringSpec:
         return (self.wire * 1e-3) ** 4 * self.pitch * 1e-3 / (32 * self.mean_d * 1e-3 * compliance)
 
 
-# UNVERIFIED part: any 3/4 in OD x 0.120 in music-wire compression spring (e.g. McMaster 9657K-series or Lee Spring
-# LC-series long stock), plain ends, cut to 150 mm with about 9 mm pitch. Measure OD, wire and pitch, set them here.
-# Sized for the ~160 g eye (with its tip plate) 73 mm above the spring's top: the load that would buckle it sideways,
-# EI / (L^2/2 + a L), is ~6.2 N against the eye's 1.6 N, so the 5 degree splay sags only to about 6.7 degrees.
-STEEL_SPRING = SpringSpec("music wire 3/4 in OD x 0.120 in wire, cut to 150", 19.05, 3.05, 150.0, 9.0, False, "music wire", 207.0, 79.3)
+def catalog_pitch(od: float, wire: float, stock_length: float, stock_rate: float, g_gpa: float) -> float:
+    """Pitch of a bought spring from its catalogue rate: k = G d^4 / (8 D^3 n) gives the stock's coil count n."""
+    n = g_gpa * 1e3 * wire**4 / (8 * (od - wire) ** 3 * stock_rate)
+    return stock_length / n
+
+
+IN = 25.4
+LBF_IN = 4.44822 / IN  # lbf/in -> N/mm
+# McMaster 9662K33: spring-steel cut-to-length compression spring, 36 in long, OD 1.00 in, ID 0.73 in, wire 0.135 in,
+# 5.6 lbf/in over the full 36 in, open ends. Cut to 6 in (152.4 mm) per stalk; a cut piece's rate goes as 36 / length.
+# The catalogue rate puts 131.7 coils in the 36 in stock: pitch 6.94 mm, 22 coils in 6 in. The steel's E and G are the
+# usual spring-steel values (UNVERIFIED for this stock). Measure the pitch of the real spring and set it here.
+STEEL_SPRING = SpringSpec(
+    "McMaster 9662K33, 1.00 in OD x 0.135 in wire, cut to 6 in",
+    1.00 * IN,
+    0.135 * IN,
+    6 * IN,
+    catalog_pitch(1.00 * IN, 0.135 * IN, 36 * IN, 5.6 * LBF_IN, 79.3),
+    False,
+    "spring steel",
+    207.0,
+    79.3,
+)
 # The printed alternative: PETG is ~100x softer than steel, so the coil has to be much fatter to carry the eye.
 # Print it upright with tree supports under the coils. Its stiffness is UNVERIFIED (layer lines, creep).
 PRINTED_SPRING = SpringSpec("printed PETG coil, 30 OD x 6 wire", 30.0, 6.0, 150.0, 12.0, True, "PETG", 2.0, 0.75)
@@ -129,18 +146,24 @@ PRINTED_SPRING = SpringSpec("printed PETG coil, 30 OD x 6 wire", 30.0, 6.0, 150.
 
 @dataclass(frozen=True)
 class StalkSpec:
-    """Spring stalk: base plate, spring, guide discs, tip plate. Three tendons at 120 degrees, one servo each. All mm."""
+    """Spring stalk: base plate, spring, guide discs, tip plate. Three tendons at 120 degrees, one winch each. All mm.
+
+    The winches are worm-geared and can't be back-driven, so each tendon holds its length with no current. They're
+    pretensioned (`pretension` each), which squeezes the spring: the stalk is modelled at that installed length. The
+    collars and discs grip the coil, so only the free coils between them bend and compress (`bend_length`).
+    """
 
     spring: SpringSpec = STEEL_SPRING
     guides: int = 5
     guide_t: float = 4.0
-    guide_step: float = 24.0  # target spacing, rounded to whole pitches so every disc is the same part
+    guide_step: float = 28.0  # target spacing, rounded to whole pitches so every disc is the same part
     collar_turns: float = 1.5  # coil turns the base and tip collars grip
     plate_t: float = 5.0
-    bore: float = 12.0  # display lead (USB-C with a slim plug, <= 11.5 wide: UNVERIFIED)
+    bore: float = 15.0  # display lead: a stock USB-C plug (<= 13 wide, UNVERIFIED) threads through; spring ID 18.5
     tendons: int = 3
     tendon_hole: float = 1.5  # for 0.41 mm Spectra
     clearance: float = 0.25  # radial, coil groove over the wire
+    pretension: float = 10.0  # N per tendon, held by the locked winches
 
     @property
     def tendon_r(self) -> float:
@@ -161,8 +184,8 @@ class StalkSpec:
 
     @property
     def bolt_r(self) -> float:
-        """Base plate to pedestal, 3 x M3."""
-        return self.tendon_r + 5
+        """Base plate to pedestal, 3 x M3, between the tendons: the heads clear the collar by 0.75 mm."""
+        return self.tendon_r + 1
 
     @property
     def base_r(self) -> float:
@@ -170,18 +193,14 @@ class StalkSpec:
 
     @property
     def tip_bolts(self) -> tuple[tuple[float, float], ...]:
-        """Tip plate to the eye's chin, 2 x M3 from below (heads beside the collar), under the display stack (x = -8)."""
-        y = self.collar_r + 1.5
-        return ((-8.0, y), (-8.0, -y))
+        """Tip plate to the eye's chin, 2 x M3 from below, heads beside the collar, inside the chin's 36 mm width."""
+        r, y = self.collar_r + 3.5, 14.0
+        x = -math.sqrt(r * r - y * y)
+        return ((x, y), (x, -y))
 
     @property
     def tip_r(self) -> float:
         return self.tendon_r + 7
-
-    @property
-    def length(self) -> float:
-        """Base plate bottom to tip plate top."""
-        return self.plate_t + self.spring.free_length + self.plate_t
 
     @property
     def guide_z(self) -> list[float]:
@@ -192,6 +211,91 @@ class StalkSpec:
         n = min(self.guides, int((free - self.guide_t) // step) + 1)
         start = self.collar_h + (free - (n - 1) * step) / 2
         return [start + i * step for i in range(n)]
+
+    # --- the spring as installed: gripped turns are rigid, the free coils between them bend and compress ----------
+
+    def gripped(self) -> list[tuple[float, float]]:
+        """Spring-frame spans the collars and discs hold rigid."""
+        top, h = self.spring.free_length, self.guide_t / 2
+        return [(0.0, self.collar_h)] + [(z - h, z + h) for z in self.guide_z] + [(top - self.collar_h, top)]
+
+    @property
+    def bend_length(self) -> float:
+        """Free coil between the collars and discs, free state: only this bends or compresses."""
+        return self.spring.free_length - sum(b - a for a, b in self.gripped())
+
+    @property
+    def rate(self) -> float:
+        """Axial rate of the installed spring, N/mm: its gripped turns are inactive."""
+        return self.spring.rate * self.spring.free_length / self.bend_length
+
+    @property
+    def preload(self) -> float:
+        """Spring compression at rest, N: every tendon at its pretension."""
+        return self.tendons * self.pretension
+
+    @property
+    def preload_shortening(self) -> float:
+        return self.preload / self.rate
+
+    @property
+    def squeeze(self) -> float:
+        """Installed / free length of the free coils: their pitch shrinks by this much."""
+        return 1 - self.preload_shortening / self.bend_length
+
+    @property
+    def ei(self) -> float:
+        """Bending stiffness at rest, N·m²: EI goes with the pitch, so the preload softens it a little."""
+        return self.spring.ei * self.squeeze
+
+    def installed_z(self, z: float) -> float:
+        """Where a point z of the free spring (spring frame) sits once the preload has squeezed it."""
+        out, prev = 0.0, 0.0
+        for a, b in self.gripped():
+            if z <= a:
+                return out + (z - prev) * self.squeeze
+            out += (a - prev) * self.squeeze
+            if z <= b:
+                return out + (z - a)
+            out += b - a
+            prev = b
+        return out + (z - prev) * self.squeeze
+
+    @property
+    def installed_length(self) -> float:
+        return self.installed_z(self.spring.free_length)
+
+    @property
+    def length(self) -> float:
+        """Base plate bottom to tip plate top, installed."""
+        return self.plate_t + self.installed_length + self.plate_t
+
+    def moment(self, deg: float) -> float:
+        """Root moment for a constant-curvature bend of deg degrees, N·m."""
+        return self.ei * math.radians(deg) / (self.bend_length * self.squeeze / 1000)
+
+    def pull(self, deg: float) -> float:
+        """Tension on the pulling tendon for a bend of deg degrees, N. With three tendons the other two stay at their
+        pretension, 60 degrees off the far side (lever r/2 each), so they cost the puller one more pretension."""
+        return self.moment(deg) / (self.tendon_r / 1000) + self.pretension
+
+    def deg_at(self, pull: float) -> float:
+        """The bend a tendon pull holds, degrees: the inverse of pull()."""
+        m = (pull - self.pretension) * self.tendon_r / 1000
+        return math.degrees(m * self.bend_length * self.squeeze / 1000 / self.ei)
+
+    def shortening(self, deg: float) -> float:
+        """Extra shortening at a bend, over the preload, mm: the puller's tension rises, the others hold."""
+        return (self.pull(deg) - self.pretension) / self.rate
+
+    def buckle_load(self, lever: float) -> float:
+        """Weight (N) that would fold the straight stalk sideways with its centre `lever` mm above the spring's top.
+
+        Small-angle cantilever: the eye's offset feeds back through the curvature of the free coils, so the critical
+        load is EI / (L_bend (L / 2 + lever)).
+        """
+        lb = self.bend_length * self.squeeze / 1000
+        return self.ei / (lb * (self.installed_length / 2000 + lever / 1000))
 
 
 @dataclass(frozen=True)
@@ -342,6 +446,99 @@ BATTERY = PackSpec()
 BMS = (60.0, 40.0, 12.0)  # UNVERIFIED envelope: 4S Li-ion BMS, >= 40 A continuous, with balancing
 STALK = StalkSpec()
 EYE = EyeSpec()
+EYE_KG = 0.165  # UNVERIFIED: eye (display budget 80 g) plus the tip plate, riding on the stalk
+
+
+@dataclass(frozen=True)
+class WormMotorSpec:
+    """A right-angle worm gearmotor with a Hall encoder on the motor shaft. All mm, N·m, A, rpm.
+
+    Motor frame: origin on the output shaft axis in the gearbox's output face, the shaft along +z, the gearbox's long
+    axis along +y from its far end (y = -shaft_from_end) to the motor end, where the can and the encoder carry on.
+    """
+
+    name: str
+    box_l: float  # gearbox length, far end to motor end
+    box_w: float
+    box_t: float  # thickness, output face to back face
+    shaft_from_end: float  # output shaft centre from the gearbox's far end
+    shaft_d: float
+    shaft_l: float  # past the output face
+    holes: tuple[tuple[float, float], ...]  # M3, output face, (x, y) from the far end's centre
+    can_d: float
+    can_l: float
+    enc_d: float
+    enc_l: float
+    ratio: float
+    ppr: int  # encoder pulses per motor revolution, per channel
+    no_load_rpm: float
+    no_load_a: float
+    rated_rpm: float
+    rated_nm: float
+    rated_a: float
+    stall_a: float
+    stall_nm: float
+    kg: float
+
+    @property
+    def length(self) -> float:
+        return self.box_l + self.can_l + self.enc_l
+
+    @property
+    def can_z(self) -> float:
+        """Can axis below the output face: centred on the gearbox's thickness (UNVERIFIED)."""
+        return -self.box_t / 2
+
+    @property
+    def kt(self) -> float:
+        """Output torque per amp over the no-load current, N·m/A, from the rated point."""
+        return self.rated_nm / (self.rated_a - self.no_load_a)
+
+    def torque(self, amps: float) -> float:
+        return self.kt * max(0.0, amps - self.no_load_a)
+
+    def rpm(self, nm: float) -> float:
+        """Speed at 12 V under a load, on the straight line through no-load and the rated point."""
+        return self.no_load_rpm - (self.no_load_rpm - self.rated_rpm) * nm / self.rated_nm
+
+    @property
+    def counts(self) -> int:
+        """Quadrature counts per output revolution."""
+        return round(4 * self.ppr * self.ratio)
+
+
+# NFP-JGY-370-EN, 12 V "A type", 337:1, from the NFP listing (nfpshop.com / microdcmotors.com): 35 rpm and <= 0.25 A
+# no-load, 25 rpm at the rated 1.37 N·m and <= 1.3 A, >= 35 kg·cm (3.4 N·m) and <= 5.5 A stalled, self-locking,
+# 11 PPR AB Hall encoder (3.3 or 5 V). Dimensions from the ASLONG JGY-370 drawing (46 x 32 x 21.5 gearbox, 4 x M3 on
+# 18 x 33, shaft 15 from the far end), the NFP shaft (D 6 x 18.5) and the listing's 162-200 g. Can and encoder sizes
+# are guesses. All UNVERIFIED: measure one and set them here.
+WINCH_MOTOR = WormMotorSpec(
+    "NFP-JGY-370-EN 12 V 337:1",
+    46.0,
+    32.0,
+    21.5,
+    15.0,
+    6.0,
+    18.5,
+    ((-9.0, 6.0), (9.0, 6.0), (-9.0, 39.0), (9.0, 39.0)),
+    24.4,
+    30.8,
+    21.5,
+    14.0,
+    337.0,
+    11,
+    35.0,
+    0.25,
+    25.0,
+    1.37,
+    1.3,
+    5.5,
+    3.4,
+    0.20,
+)
+PULLEY_R = 10.0  # winch pulley groove radius: 1 N·m is 100 N of tendon
+WINCH_LIMIT_A = 1.6  # TB67H420FTG chopping threshold per channel (VREF 1.28 V): caps the tendon pull in hardware
+SPECTRA_N = 289.0  # PowerPro Spectra 65 lb breaking strength
 
 
 def docked_pose(swing_deg: float = ARM_SWING, lift: float = DOCK_H) -> dict[str, float]:

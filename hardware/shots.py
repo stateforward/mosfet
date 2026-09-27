@@ -65,8 +65,12 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
         # the drum seated at the foot of the cradle's curve, cut at y = -12 so the SENSE and GND pins show under the skid
         "dock_section": (section(whole, -12.0), (-20, 1300, 150), (-20, 0, 120), 1.3),
     }
+    # the winches with the drum's top half, the eyes and the far end cap off: the deck in front, a back winch each side
+    bay = [p for p in whole if not p.name.startswith(("drum upper", "dock", "REF pogo", "REF April", "REF IR", "end cap L"))]
+    bay = [p for p in bay if " eye " not in p.name and "round display" not in p.name and "stalk" not in p.name]
+    shots["bot_winches"] = (bay, (700, 650, 700), (20, 0, 130), 1.6)
     k = kit()
-    stalk_eye = [p for p in k if "pod" not in p.name and "pulley" not in p.name and "STS" not in p.name]
+    stalk_eye = [p for p in k if "winch" not in p.name]
     lower = [p for p in stalk_eye if p.name.startswith(("stalk base", "REF stalk spring", "stalk spring", "stalk guide 1"))]
     # the base collar and first guide disc screwed onto the coil, cut through the stalk axis
     shots["stalk_collar_section"] = (section(lower, 0.0), (0, 320, 30), (0, 0, 30), 2.2)
@@ -84,4 +88,8 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "out/shots", int(sys.argv[2]) if len(sys.argv) > 2 else 3939, float(sys.argv[3]) if len(sys.argv) > 3 else 2.0)
+    main(
+        sys.argv[1] if len(sys.argv) > 1 else "out/shots",
+        int(sys.argv[2]) if len(sys.argv) > 2 else 3939,
+        float(sys.argv[3]) if len(sys.argv) > 3 else 2.0,
+    )
