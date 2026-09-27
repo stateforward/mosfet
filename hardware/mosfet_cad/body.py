@@ -9,6 +9,7 @@ import math
 
 from build123d import Face, Location, Pos, Rot, Solid, Vector, Wire
 
+from .audio import grille_tools, mic_bosses, mic_tools
 from .geom import box, cut, cyl, fuse, polar, rot_xz
 from .params import (
     ARM_L,
@@ -102,10 +103,14 @@ def stalk_root(side: int) -> Location:
 
 
 def shell_upper():
-    """Top half of the drum, with the two stalk pedestals on the crown, straight above the drum axis."""
+    """Top half of the drum, with the two stalk pedestals on the crown, straight above the drum axis, the mic array's
+    bosses and ports up the front, and the top of the speaker grille."""
     bosses = [cyl((0, 0, -35), (0, 0, 0), STALK.base_r).moved(stalk_root(s)) for s in (1, -1)]
+    tube = cyl((0, -DRUM_L / 2, 0), (0, DRUM_L / 2, 0), DRUM_R - 0.5)
+    mics = [b & tube for b in mic_bosses()]
     body = fuse(_half_tube(True), *bosses)
-    tools = [cyl((0, -DRUM_L, 0), (0, DRUM_L, 0), RI)]
+    body = fuse(cut(body, cyl((0, -DRUM_L, 0), (0, DRUM_L, 0), RI)), *mics)
+    tools = grille_tools() + mic_tools()
     tools += _cap_screw_holes((30, 150), 1.7)
     for s in (1, -1):
         local = [cyl((0, 0, -45), (0, 0, 1), STALK.bore / 2 + 0.5)]  # display lead
@@ -116,8 +121,9 @@ def shell_upper():
 
 
 def shell_lower(beta: float):
-    """Bottom half of the drum; the skid bolts on at xz-angle beta, contact wires pass through it."""
-    tools = [cyl((0, -DRUM_L, 0), (0, DRUM_L, 0), RI)]
+    """Bottom half of the drum; the skid bolts on at xz-angle beta, contact wires pass through it. The speaker grille's
+    lower rows go through its front edge."""
+    tools = [cyl((0, -DRUM_L, 0), (0, DRUM_L, 0), RI)] + grille_tools()
     tools += _cap_screw_holes((-30, -150), 1.7)
     for y in (-48.0, 48.0):
         tools.append(_radial(beta, y, RI - 1, DRUM_R + 1, 1.7))

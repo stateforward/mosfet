@@ -6,6 +6,7 @@ from build123d import Compound, Pos, Rot
 
 from . import body as B
 from . import part as C
+from .audio import amp_ref, mic_ref, speaker_ref
 from .dock import dock_parts
 from .eye import eye_parts
 from .geom import box, cyl, rot_xz
@@ -61,6 +62,9 @@ def electronics() -> list[Part]:
         _ref("CC/CV charge module", box((64, -11.5, t), (103, 11.5, t + 18))),
         _ref("Teensy 4.1", box((-31, -30.5, B.SHELF_Z[1]), (-13, 30.5, B.SHELF_Z[1] + 4))),
         _ref("BNO085", box((-10.8, -11.35, B.SHELF_Z[1]), (14.8, 11.35, B.SHELF_Z[1] + 4.6))),
+        _ref("Adafruit 3968 speaker, 40 mm 4 ohm", speaker_ref(), (0.15, 0.15, 0.15)),
+        _ref("Adafruit PAM8302A amp", amp_ref()),
+        _ref("Seeed reSpeaker Lite mic array", mic_ref()),
     ]
 
 

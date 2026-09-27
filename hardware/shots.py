@@ -69,11 +69,13 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
     bay = [p for p in whole if not p.name.startswith(("drum upper", "dock", "REF pogo", "REF April", "REF IR", "end cap L"))]
     bay = [p for p in bay if " eye " not in p.name and "round display" not in p.name and "stalk" not in p.name]
     shots["bot_winches"] = (bay, (700, 650, 700), (20, 0, 130), 1.6)
+    # the front of the drum close up: the speaker grille and the two mic ports
+    shots["bot_voice"] = (whole, (900, -350, 450), (70, 0, 190), 2.0)
     k = kit()
     stalk_eye = [p for p in k if "winch" not in p.name]
     lower = [p for p in stalk_eye if p.name.startswith(("stalk base", "REF stalk spring", "stalk spring", "stalk guide 1"))]
-    # the base collar and first guide disc screwed onto the coil, cut through the stalk axis
-    shots["stalk_collar_section"] = (section(lower, 0.0), (0, 320, 30), (0, 0, 30), 2.2)
+    # the closed end in the base plate's seat cup and the first guide disc screwed onto the coil, cut through the axis
+    shots["stalk_seat_section"] = (section(lower, 0.0), (0, 320, 30), (0, 0, 30), 2.2)
     # side view: the screen centre sits on the stalk axis, the mount's spine behind it
     shots["stalk_eye_side"] = (stalk_eye, (0, -900, 160), (0, 0, 160), 1.0)
     shots["stalk_eye_front"] = (stalk_eye, (900, 0, 160), (0, 0, 160), 1.0)

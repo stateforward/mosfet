@@ -2,7 +2,7 @@
 
 A worm gear can't be back-driven, so a winch holds its tendon with no current: the stalks keep their pose, and the
 tendons their pretension, while every motor is off. Each winch is a 12 V JGY-370-class worm motor with a Hall
-encoder, a 10 mm single-groove pulley on its D shaft, and a PTFE tube from the pulley to the stalk's pedestal.
+encoder, an 11 mm radius single-groove pulley on its D shaft, and a PTFE tube from the pulley to the stalk's pedestal.
 
 Six of them don't fit as two three-motor pods (see hardware/README.md, Winches), so they sit where they fit:
 
@@ -24,6 +24,7 @@ from functools import cache
 from build123d import Circle, FilletPolyline, Location, Plane, Pos, Rot, Transition, Vector, sweep
 
 from . import part as P
+from .audio import speaker_cup
 from .geom import box, cut, cyl, fuse
 from .params import CAP_T, DRUM_L, DRUM_R, PULLEY_R, SHELL, STALK, WINCH_MOTOR, StalkSpec, WormMotorSpec
 from .part import Part
@@ -49,11 +50,14 @@ RAIL_T = 3.0
 RAIL_X = (36.5, 91.0)
 TOP_RAIL = DECK_COLS[1] + M.box_w / 2 + 0.5  # bottom of the top rail
 BOTTOM_RAIL = DECK_COLS[0] - M.box_w / 2 - 0.5  # top of the bottom rail
-FRONT_X = (88.0, 91.0)  # driver plate: the three TB67H420FTG carriers on its front
-DECK_TABS = ((50.0, TOP_RAIL + RAIL_T + 5.5), (50.0, BOTTOM_RAIL - RAIL_T - 5.0))  # (x, z) of the end-cap bolts
-DRIVER_BOARD = (30.5, 25.4, 5.0)  # Pololu TB67H420FTG carrier, 1.2 x 1.0 in, parts side
-DRIVER_Y = (-34.0, 0.0, 34.0)
-DRIVER_Z = 8.0  # board bottom edge
+FRONT_X = (88.0, 91.0)  # driver plate: the speaker's back box stands on its front (audio.py)
+# (x, z) of the end-cap bolts; the top one at x 42 to clear the right-hand lower tube
+DECK_TABS = ((42.0, TOP_RAIL + RAIL_T + 5.5), (50.0, BOTTOM_RAIL - RAIL_T - 5.0))
+DRIVER_BOARD = (25.4, 30.5, 5.0)  # Pololu TB67H420FTG carrier, 1.0 x 1.2 in, lying on the top rail, parts up
+# Carrier centres (x, y) on the top rail: two side by side in front, one behind on the centreline, all inside
+# |y| 31.5 so the PTFE tubes (|y| >= 40) rise clear of them
+DRIVER_XY = ((77.7, -16.25), (77.7, 16.25), (51.2, 0.0))
+STANDOFF = 3.0  # M2.5 standoffs under the carriers
 
 # --- back winches --------------------------------------------------------------------------------------------------
 BACK_Z = 62.0  # motor centre height: gearbox 2.25 over the arm servo sleeve, can top clear of the pedestal
@@ -153,11 +157,13 @@ def _shell_clip(parts_shape, r: float = RI - 1.5):
 
 @cache
 def deck():
-    """The winch deck: a plate across the drum with four motors on it, top and bottom rails, the driver plate in front,
-    and end tabs that bolt to both end caps. The top rail has the four PTFE sockets over the tendons' exits."""
+    """The winch deck: a plate across the drum with four motors on it, top and bottom rails, the driver plate in front
+    with the speaker's back box on it, and end tabs that bolt to both end caps. The top rail has the four PTFE sockets
+    over the tendons' exits and carries the three motor driver carriers."""
     x0, x1 = DECK_X - PLATE_T / 2, DECK_X + PLATE_T / 2
     zb, zt = BOTTOM_RAIL, TOP_RAIL
     parts = [
+        speaker_cup(),
         box((x0, -DECK_Y, zb - RAIL_T), (x1, DECK_Y, zt + RAIL_T)),
         box((RAIL_X[0], -DECK_Y, zt), (RAIL_X[1], DECK_Y, zt + RAIL_T)),
         box((RAIL_X[0], -DECK_Y, zb - RAIL_T), (RAIL_X[1], DECK_Y, zb)),
@@ -175,10 +181,10 @@ def deck():
     for s in (1, -1):
         for x, z in DECK_TABS:
             tools.append(cyl((x, s * (DECK_Y - 4), z), (x, s * (DECK_Y + 1), z), 1.7))
-    for y in DRIVER_Y:  # M2.5 standoffs for the driver carriers
-        for dy in (-12.0, 12.0):
-            for dz in (3.0, DRIVER_BOARD[1] - 3):
-                tools.append(cyl((FRONT_X[0] - 1, y + dy, DRIVER_Z + dz), (FRONT_X[1] + 1, y + dy, DRIVER_Z + dz), 1.4))
+    for x, y in DRIVER_XY:  # M2.5 inserts for the driver carriers' standoffs
+        for dx in (-9.5, 9.5):
+            for dy in (-12.0, 12.0):
+                tools.append(cyl((x + dx, y + dy, zt - 1), (x + dx, y + dy, zt + RAIL_T + 1), 1.6))
     return _shell_clip(cut(fuse(*parts), *tools))
 
 
@@ -332,9 +338,10 @@ def winch_parts(stalk_root, refs: bool = True) -> list[Part]:
         if refs:
             parts.append(Part(f"REF {tag} back winch ({M.name})", motor_ref(), P.REF, f, printed=False))
     if refs:
-        bw, bh, bt = DRIVER_BOARD
-        for i, y in enumerate(DRIVER_Y):
-            board = box((FRONT_X[1] + 3, y - bw / 2, DRIVER_Z), (FRONT_X[1] + 3 + bt, y + bw / 2, DRIVER_Z + bh))
+        bl, bw, bt = DRIVER_BOARD
+        z0 = TOP_RAIL + RAIL_T + STANDOFF
+        for i, (x, y) in enumerate(DRIVER_XY):
+            board = box((x - bl / 2, y - bw / 2, z0), (x + bl / 2, y + bw / 2, z0 + bt))
             parts.append(Part(f"REF TB67H420FTG dual driver {i + 1}", board, P.REF, printed=False))
         for label, solid, _ in tube_runs(stalk_root):
             parts.append(Part(f"REF PTFE tube {label}", solid, (0.92, 0.92, 0.95), printed=False))

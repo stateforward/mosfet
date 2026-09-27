@@ -75,7 +75,10 @@ DOCK_H = 6.0  # cradle floor under the skid (the pins press in from below)
 
 @dataclass(frozen=True)
 class SpringSpec:
-    """A helical compression spring used as a stalk's spine: bought steel or printed. All mm.
+    """A helical compression spring with closed (squared, not ground) ends, used as a stalk's spine. All mm.
+
+    Each end has one dead turn whose pitch is the wire diameter (plus `dead_gap`), so it sits on the next turn; the
+    `coils` active turns between them have the constant `pitch`. Free length = 3 wire + 2 dead gaps + coils x pitch.
 
     `ei` is what matters: the stalk bends, it isn't squashed. For an open-coiled helical spring under pure bending,
     EI = d^4 p / (32 D (1/E + 1/2G)), with d the wire, D the mean coil diameter and p the pitch (same model as
@@ -86,11 +89,12 @@ class SpringSpec:
     od: float
     wire: float
     free_length: float
-    pitch: float  # plain (open) ends, constant pitch: the collars and guide discs screw on along the coil
+    pitch: float  # active coils
     printed: bool
     material: str
     e_gpa: float
     g_gpa: float
+    dead_gap: float = 0.1  # modelled gap between a dead turn and the next: the real ones touch
 
     @property
     def mean_d(self) -> float:
@@ -101,8 +105,45 @@ class SpringSpec:
         return self.od - 2 * self.wire
 
     @property
+    def dead_pitch(self) -> float:
+        return self.wire + self.dead_gap
+
+    @property
+    def dead_h(self) -> float:
+        """Height of one closed end, from the spring's end to the top of its dead turn."""
+        return self.wire + self.dead_pitch
+
+    @property
+    def active_length(self) -> float:
+        return self.free_length - 2 * self.dead_h
+
+    @property
     def coils(self) -> float:
-        return self.free_length / self.pitch
+        """Active coils."""
+        return (self.free_length - self.wire - 2 * self.dead_pitch) / self.pitch
+
+    @property
+    def turns(self) -> float:
+        return self.coils + 2
+
+    def wire_z(self, t: float) -> float:
+        """Height of the wire's centre after t turns from the bottom end (spring frame, free)."""
+        lo = self.wire / 2
+        if t <= 1:
+            return lo + t * self.dead_pitch
+        if t <= 1 + self.coils:
+            return lo + self.dead_pitch + (t - 1) * self.pitch
+        return lo + self.dead_pitch + self.coils * self.pitch + (t - 1 - self.coils) * self.dead_pitch
+
+    def turn_at(self, z: float) -> float:
+        """The inverse of wire_z, clamped to the wire."""
+        lo, dp, n = self.wire / 2, self.dead_pitch, self.coils
+        z = min(max(z, lo), self.free_length - lo)
+        if z <= lo + dp:
+            return (z - lo) / dp
+        if z <= lo + dp + n * self.pitch:
+            return 1 + (z - lo - dp) / self.pitch
+        return 1 + n + (z - lo - dp - n * self.pitch) / dp
 
     @property
     def rate(self) -> float:
@@ -111,36 +152,38 @@ class SpringSpec:
 
     @property
     def ei(self) -> float:
-        """Bending stiffness, N·m²."""
+        """Bending stiffness of the active coils, N·m²."""
         compliance = 1 / (self.e_gpa * 1e9) + 1 / (2 * self.g_gpa * 1e9)
         return (self.wire * 1e-3) ** 4 * self.pitch * 1e-3 / (32 * self.mean_d * 1e-3 * compliance)
 
 
-def catalog_pitch(od: float, wire: float, stock_length: float, stock_rate: float, g_gpa: float) -> float:
-    """Pitch of a bought spring from its catalogue rate: k = G d^4 / (8 D^3 n) gives the stock's coil count n."""
-    n = g_gpa * 1e3 * wire**4 / (8 * (od - wire) ** 3 * stock_rate)
-    return stock_length / n
+def catalog_pitch(od: float, wire: float, free_length: float, rate: float, g_gpa: float, dead_gap: float = 0.1) -> float:
+    """Active pitch of a bought closed-end spring from its catalogue rate: k = G d^4 / (8 D^3 n) gives the active coil
+    count n, and the length left after the two closed ends is n pitches."""
+    n = g_gpa * 1e3 * wire**4 / (8 * (od - wire) ** 3 * rate)
+    return (free_length - 3 * wire - 2 * dead_gap) / n
 
 
 IN = 25.4
 LBF_IN = 4.44822 / IN  # lbf/in -> N/mm
-# McMaster 9662K33: spring-steel cut-to-length compression spring, 36 in long, OD 1.00 in, ID 0.73 in, wire 0.135 in,
-# 5.6 lbf/in over the full 36 in, open ends. Cut to 6 in (152.4 mm) per stalk; a cut piece's rate goes as 36 / length.
-# The catalogue rate puts 131.7 coils in the 36 in stock: pitch 6.94 mm, 22 coils in 6 in. The steel's E and G are the
-# usual spring-steel values (UNVERIFIED for this stock). Measure the pitch of the real spring and set it here.
+# McMaster 9657K321: spring steel, 6 in free, OD 0.875 in, ID 0.635 in, wire 0.120 in, closed (not ground) ends,
+# 26 lbf/in, 3.984 in long at its 54 lb max load; pack of 6, $17.30. From the rate, n = G d^4 / (8 D^3 k) = 26.7
+# active coils, so the active pitch is 5.37 mm (2.3 mm gap between coils). E and G are the usual spring-steel values
+# (UNVERIFIED for this spring): measure the pitch and set it here.
 STEEL_SPRING = SpringSpec(
-    "McMaster 9662K33, 1.00 in OD x 0.135 in wire, cut to 6 in",
-    1.00 * IN,
-    0.135 * IN,
+    "McMaster 9657K321, 0.875 in OD x 0.120 in wire x 6 in, closed ends",
+    0.875 * IN,
+    0.120 * IN,
     6 * IN,
-    catalog_pitch(1.00 * IN, 0.135 * IN, 36 * IN, 5.6 * LBF_IN, 79.3),
+    catalog_pitch(0.875 * IN, 0.120 * IN, 6 * IN, 26 * LBF_IN, 79.3),
     False,
     "spring steel",
     207.0,
     79.3,
 )
+SPRING_MAX_N = 54 * 4.44822  # 9657K321 max load
 # The printed alternative: PETG is ~100x softer than steel, so the coil has to be much fatter to carry the eye.
-# Print it upright with tree supports under the coils. Its stiffness is UNVERIFIED (layer lines, creep).
+# Print it upright with tree supports under the coils, closed ends like the steel one. Its stiffness is UNVERIFIED.
 PRINTED_SPRING = SpringSpec("printed PETG coil, 30 OD x 6 wire", 30.0, 6.0, 150.0, 12.0, True, "PETG", 2.0, 0.75)
 
 
@@ -149,17 +192,18 @@ class StalkSpec:
     """Spring stalk: base plate, spring, guide discs, tip plate. Three tendons at 120 degrees, one winch each. All mm.
 
     The winches are worm-geared and can't be back-driven, so each tendon holds its length with no current. They're
-    pretensioned (`pretension` each), which squeezes the spring: the stalk is modelled at that installed length. The
-    collars and discs grip the coil, so only the free coils between them bend and compress (`bend_length`).
+    pretensioned (`pretension` each), which squeezes the spring: the stalk is modelled at that installed length. Each
+    closed end drops into a seat cup on its plate; the dead turns are rigid and the discs grip the coil, so only the
+    active coils between them bend and compress (`bend_length`).
     """
 
     spring: SpringSpec = STEEL_SPRING
     guides: int = 5
     guide_t: float = 4.0
-    guide_step: float = 28.0  # target spacing, rounded to whole pitches so every disc is the same part
-    collar_turns: float = 1.5  # coil turns the base and tip collars grip
+    guide_step: float = 27.0  # target spacing, rounded to whole pitches so every disc is the same part
+    seat_extra: float = 1.5  # seat cup depth past the dead turn: its wall hugs the first active turn
     plate_t: float = 5.0
-    bore: float = 15.0  # display lead: a stock USB-C plug (<= 13 wide, UNVERIFIED) threads through; spring ID 18.5
+    bore: float = 15.0  # display lead: a stock USB-C plug (<= 13 wide, UNVERIFIED) threads through; spring ID 16.1
     tendons: int = 3
     tendon_hole: float = 1.5  # for 0.41 mm Spectra
     clearance: float = 0.25  # radial, coil groove over the wire
@@ -176,11 +220,13 @@ class StalkSpec:
 
     @property
     def collar_r(self) -> float:
-        return self.spring.od / 2 + 2.5
+        """Seat cup outside radius: a 2 mm wall round the coil."""
+        return self.spring.od / 2 + 0.3 + 2.0
 
     @property
     def collar_h(self) -> float:
-        return self.collar_turns * self.spring.pitch
+        """Seat cup depth, from the plate: the closed end's dead turn plus `seat_extra`."""
+        return self.spring.dead_h + self.seat_extra
 
     @property
     def bolt_r(self) -> float:
@@ -212,12 +258,12 @@ class StalkSpec:
         start = self.collar_h + (free - (n - 1) * step) / 2
         return [start + i * step for i in range(n)]
 
-    # --- the spring as installed: gripped turns are rigid, the free coils between them bend and compress ----------
+    # --- the spring as installed: dead turns and gripped turns are rigid, the active coils between them bend --------
 
     def gripped(self) -> list[tuple[float, float]]:
-        """Spring-frame spans the collars and discs hold rigid."""
-        top, h = self.spring.free_length, self.guide_t / 2
-        return [(0.0, self.collar_h)] + [(z - h, z + h) for z in self.guide_z] + [(top - self.collar_h, top)]
+        """Spring-frame spans held rigid: the closed ends' dead turns, and the coil inside each disc."""
+        top, h, e = self.spring.free_length, self.guide_t / 2, self.spring.dead_h
+        return [(0.0, e)] + [(z - h, z + h) for z in self.guide_z] + [(top - e, top)]
 
     @property
     def bend_length(self) -> float:
@@ -226,8 +272,8 @@ class StalkSpec:
 
     @property
     def rate(self) -> float:
-        """Axial rate of the installed spring, N/mm: its gripped turns are inactive."""
-        return self.spring.rate * self.spring.free_length / self.bend_length
+        """Axial rate of the installed spring, N/mm: the turns inside the discs are inactive too."""
+        return self.spring.rate * self.spring.active_length / self.bend_length
 
     @property
     def preload(self) -> float:
@@ -507,11 +553,11 @@ class WormMotorSpec:
         return round(4 * self.ppr * self.ratio)
 
 
-# NFP-JGY-370-EN, 12 V "A type", 337:1, from the NFP listing (nfpshop.com / microdcmotors.com): 35 rpm and <= 0.25 A
-# no-load, 25 rpm at the rated 1.37 N·m and <= 1.3 A, >= 35 kg·cm (3.4 N·m) and <= 5.5 A stalled, self-locking,
-# 11 PPR AB Hall encoder (3.3 or 5 V). Dimensions from the ASLONG JGY-370 drawing (46 x 32 x 21.5 gearbox, 4 x M3 on
-# 18 x 33, shaft 15 from the far end), the NFP shaft (D 6 x 18.5) and the listing's 162-200 g. Can and encoder sizes
-# are guesses. All UNVERIFIED: measure one and set them here.
+# NFP-JGY-370-EN, 12 V "A type", 337:1, from the NFP listing (nfpshop.com, $18.00): 35 rpm and <= 0.25 A no-load,
+# 25 rpm at the rated 1.37 N·m and <= 1.3 A, >= 35 kg·cm (3.4 N·m) and <= 5.5 A stalled, self-locking, 11 PPR AB Hall
+# encoder (3.3 or 5 V), 200 g. Dimensions from the ASLONG JGY-370 drawing (46 x 32 x 21.5 gearbox, 4 x M3 on 18 x 33,
+# shaft 15 from the far end) and the NFP shaft (D 6 x 18.5). Can and encoder sizes are guesses. All UNVERIFIED:
+# measure one and set them here. The N20, 050 and 180-size worm motors are too weak for the 9657K321 stalk (README).
 WINCH_MOTOR = WormMotorSpec(
     "NFP-JGY-370-EN 12 V 337:1",
     46.0,
@@ -536,8 +582,8 @@ WINCH_MOTOR = WormMotorSpec(
     3.4,
     0.20,
 )
-PULLEY_R = 10.0  # winch pulley groove radius: 1 N·m is 100 N of tendon
-WINCH_LIMIT_A = 1.6  # TB67H420FTG chopping threshold per channel (VREF 1.28 V): caps the tendon pull in hardware
+PULLEY_R = 11.0  # winch pulley groove radius: 90 degrees in about 1 s through the worst tube, at 64% of rated torque
+WINCH_LIMIT_A = 1.25  # TB67H420FTG chopping threshold per channel (VREF 1.00 V): caps the tendon pull in hardware
 SPECTRA_N = 289.0  # PowerPro Spectra 65 lb breaking strength
 
 
