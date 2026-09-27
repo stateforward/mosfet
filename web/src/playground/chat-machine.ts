@@ -55,6 +55,33 @@ export const httpTransport: ChatTransport = {
   },
 };
 
+/**
+ * Talk to a bot the workshop builder already booted. The builder owns that bot's lifetime, so opening a session is
+ * just naming it and ending one leaves the bot running.
+ */
+export function botTransport(bot: string): ChatTransport {
+  return {
+    health: httpTransport.health,
+    async open() {
+      return { session: bot, problem: null };
+    },
+    async send(session: string, text: string) {
+      const response = await fetch("/api/builder/interact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bot: session, text }),
+      });
+      const body = (await response.json()) as BridgeReply;
+      return {
+        reply: body.reply ?? null,
+        problem: body.problem ?? (response.ok ? null : `workshop answered ${response.status}`),
+        ended: response.status === 404,
+      };
+    },
+    end() {},
+  };
+}
+
 const recheckDelay = (): number => Chat.recheckMs;
 
 /**
