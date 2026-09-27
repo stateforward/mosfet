@@ -1,0 +1,9 @@
+[project]
+name = "mosfet-hardware"
+version = "0.1.0"
+description = "Parametric, printable CAD for the mosfet robot (build123d): stalk test kit, whole bot, charging dock"
+requires-python = ">=3.11,<3.14"
+dependencies = ["build123d>=0.9", "ocp_vscode>=2.8", "ocp_viewer"]
+
+[tool.uv]
+package = false
