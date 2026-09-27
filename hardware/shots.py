@@ -52,8 +52,8 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
     shots = {
         "bot_iso": (whole, (900, -700, 650), (60, 0, 230), 1.0),
         "bot_front": (whole, (1400, 0, 280), (60, 0, 280), 1.0),  # the dock's charging hardware is all behind the bot
-        "dock_iso": (dock, (700, -600, 500), (40, 0, 40), 1.0),
-        "dock_back_iso": (dock, (-700, 550, 450), (-40, 0, 60), 1.0),
+        "dock_iso": (dock, (900, -800, 700), (-50, 0, 60), 0.8),
+        "dock_back_iso": (dock, (-900, 750, 600), (-50, 0, 60), 0.8),
         "bot_side": (whole, (60, -1400, 280), (60, 0, 280), 1.0),
         "bot_back_iso": (whole, (-800, 700, 600), (60, 0, 230), 1.0),
         "bot_section": (
@@ -62,6 +62,8 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
             (40, 0, 230),
             1.1,
         ),
+        # the drum seated in the cradle's U, cut at y = -12 so the SENSE and GND pins show under the skid
+        "dock_section": (section(whole, -12.0), (-20, 1300, 150), (-20, 0, 120), 1.3),
     }
     k = kit()
     stalk = [p for p in k if "stalk" in p.name][:4]
