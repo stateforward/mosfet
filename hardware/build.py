@@ -113,7 +113,7 @@ def stalk_report() -> str:
             f"ID {sp.id:.1f}, mean D {sp.mean_d:.2f}; {sp.rate:.2f} N/mm as cut"
         ),
         (
-            f"collars and discs grip {sp.free_length - s.bend_length:.1f} mm; {s.bend_length:.1f} mm of free coil bends: "
+            f"dead turns and discs hold {sp.free_length - s.bend_length:.1f} mm; {s.bend_length:.1f} mm of active coil bends: "
             f"{s.rate:.2f} N/mm installed"
         ),
         (
@@ -127,7 +127,7 @@ def stalk_report() -> str:
             f"{deg:.0f} deg: {s.moment(deg):.2f} N·m at the root, {pull:.0f} N on the pulling tendon at r {s.tendon_r:.1f} "
             f"({s.moment(deg) / (s.tendon_r / 1000):.0f} + {s.pretension:.0f} held by the others), "
             f"{pull * PULLEY_R / 1000:.2f} N·m at the pulley; shortens {s.shortening(deg):.1f} mm more; "
-            f"{bend_time(deg):.1f} s at 12 V"
+            f"{bend_time(deg):.2f} s at 12 V"
         )
     lever = s.plate_t + EYE.centre_z
     w = EYE_KG * 9.81
@@ -152,7 +152,7 @@ def stalk_report() -> str:
         f"{limit_pull / SPECTRA_N:.0%} of the Spectra's {SPECTRA_N:.0f} N); the coils would bind at {bind:.0f} deg"
     )
     lines.append(f"guide discs at {', '.join(f'{z:.1f}' for z in s.guide_z)} mm up the free spring")
-    lines.append(f"\n== winches: 6 x {m.name}, {PULLEY_R:.0f} mm pulley ==")
+    lines.append(f"\n== winches: 6 x {m.name}, pulley groove radius {PULLEY_R:.0f} mm ==")
     lines.append(
         f"{m.counts} counts/rev ({2 * math.pi * PULLEY_R / m.counts * 1000:.1f} um of tendon each); "
         f"{m.kt:.2f} N·m/A over {m.no_load_a} A no-load; 0 A holding (worm, self-locking)"
@@ -166,9 +166,129 @@ def stalk_report() -> str:
         lines.append(f"PTFE {label}: {path.length:.0f} mm, turns {turn:.0f} deg, capstan x{cap:.2f} at mu {TUBE_MU}")
     lines.append(
         f"through the worst tube (x{worst:.2f}): 90 deg takes {s.pull(90) * worst * PULLEY_R / 1000:.2f} N·m and "
-        f"{bend_time(90, worst):.1f} s; reach {s.deg_at(rated_pull / worst):.0f} deg rated, "
+        f"{bend_time(90, worst):.2f} s; reach {s.deg_at(rated_pull / worst):.0f} deg rated, "
         f"{s.deg_at(limit_pull / worst):.0f} deg at the chop limit"
     )
+    return "\n".join(lines)
+
+
+# --- mass, balance and filament -----------------------------------------------------------------------------------
+
+DENSITY = {"PETG": 1.27, "TPU 95A": 1.21}  # g/cm3
+LINE_W = 0.42  # mm per wall line
+# Print settings per part (name substring -> walls, infill), from the print table in README.md. First match wins.
+FILL = (
+    ("guide", (0, 1.0)),
+    ("pulley", (0, 1.0)),
+    ("gear", (0, 1.0)),
+    ("pinion", (0, 1.0)),
+    ("stalk base", (4, 0.40)),
+    ("stalk tip", (4, 0.40)),
+    ("winch deck", (4, 0.25)),
+    ("back winch bracket", (4, 0.25)),
+    ("drum", (3, 0.15)),
+    ("end cap", (4, 0.20)),
+    ("arm", (4, 0.25)),
+    ("tire", (3, 0.15)),
+    ("battery cradle", (3, 0.15)),
+    ("dock", (3, 0.15)),
+)
+# Bought parts, grams (UNVERIFIED unless the README gives a source), by name substring. First match wins.
+BOUGHT_G = (
+    ("Jetson", 200.0),
+    ("BMS", 40.0),
+    ("MDD10A", 45.0),
+    ("bus servo adapter", 10.0),
+    ("D24V150F12", 20.0),
+    ("D36V50F5", 5.0),
+    ("charge module", 35.0),
+    ("Teensy", 10.0),
+    ("BNO085", 3.0),
+    ("speaker", 25.0),
+    ("PAM8302A", 2.0),
+    ("reSpeaker", 15.0),
+    ("6805", 11.0),
+    ("37D", 195.0),
+    ("STS3250", 70.0),
+    ("brass pad", 3.0),
+    ("round display", 80.0),
+    ("TB67H420", 4.0),
+)
+WIRING_G = 300.0  # wiring, connectors and fasteners, lumped on the drum axis
+STEEL = 7.85  # g/cm3
+WHEEL_SIDE = ("arm inner", "arm outer", "wheel rim", "tire", "REF Pololu 37D")
+
+
+def printed_grams(p: Part) -> float:
+    """Grams of filament in a printed part: its walls (surface x wall lines) solid, the rest at its infill."""
+    walls, infill = next((f for key, f in FILL if key in p.name), (3, 0.20))
+    v, a = p.shape.volume, p.shape.area  # every surface gets its walls (or top/bottom layers)
+    solid = min(v, a * walls * LINE_W) if infill < 1 else v
+    return DENSITY.get(p.material, 1.27) * (solid + infill * (v - solid)) / 1000
+
+
+def part_grams(p: Part) -> float | None:
+    """Grams of any part in the bot, or None for dock hardware (not carried)."""
+    from mosfet_cad.params import BATTERY, WINCH_MOTOR
+
+    n = p.name
+    if n.startswith(("dock", "REF pogo", "REF April", "REF IR")):
+        return None
+    if p.printed:
+        return printed_grams(p)
+    if "stalk spring" in n:
+        return STEEL * p.shape.volume / 1000
+    if "PTFE" in n:
+        return 2.2 * 0.75 * p.shape.volume / 1000  # a 2 x 4 tube modelled solid
+    if BATTERY.name in n:
+        return BATTERY.kg * 1000
+    if WINCH_MOTOR.name in n:
+        return WINCH_MOTOR.kg * 1000
+    return next((g for key, g in BOUGHT_G if key in n), 0.0)
+
+
+def mass_report(bot_parts: list[Part], extra: dict[str, list[Part]]) -> str:
+    """Bot mass and centre of mass (drum frame, docked), and filament by material for the bot, the dock and the kit."""
+    from build123d import Pos as P_
+    from build123d import Vector
+
+    from mosfet_cad.geom import rot_xz
+    from mosfet_cad.params import docked_pose
+
+    pose = docked_pose()
+    to_drum = (P_(0, 0, pose["axis_z"]) * rot_xz(pose["tilt"])).inverse()
+    tot, body = [0.0, Vector()], [0.0, Vector()]
+    filament: dict[str, dict[str, float]] = {}
+    for p in bot_parts:
+        g = part_grams(p)
+        if p.printed:
+            where = "dock" if p.name.startswith("dock") else "bot"
+            filament.setdefault(where, {}).setdefault(p.material, 0.0)
+            filament[where][p.material] += printed_grams(p)
+        if g is None or g == 0:
+            continue
+        c = (to_drum * P_(*p.world().center())).position
+        tot[0] += g
+        tot[1] += c * g
+        if not p.name.startswith(WHEEL_SIDE):
+            body[0] += g
+            body[1] += c * g
+    for acc in (tot, body):
+        acc[0] += WIRING_G
+    for name, parts in extra.items():
+        for p in parts:
+            if p.printed:
+                filament.setdefault(name, {}).setdefault(p.material, 0.0)
+                filament[name][p.material] += printed_grams(p)
+    ct, cb = tot[1] / tot[0], body[1] / body[0]
+    lines = [
+        "\n== mass and balance (bought parts UNVERIFIED, PETG 1.27 g/cm3 at the print table's walls and infill) ==",
+        (
+            f"bot {tot[0] / 1000:.2f} kg, CoM drum frame ({ct.X:.1f}, {ct.Y:.1f}, {ct.Z:.1f}); "
+            f"body {body[0] / 1000:.2f} kg, CoM ({cb.X:.1f}, {cb.Y:.1f}, {cb.Z:.1f}); wiring {WIRING_G:.0f} g on the axis"
+        ),
+        "filament (g): " + "; ".join(f"{k}: " + ", ".join(f"{m} {g:.0f}" for m, g in v.items()) for k, v in filament.items()),
+    ]
     return "\n".join(lines)
 
 
@@ -238,6 +358,9 @@ def main() -> int:
         if not args.no_export:
             export(parts, printed, name)
     print(stalk_report())
+    if "mosfet" in groups:
+        extra = {"kit": groups["stalk_kit"]} if "stalk_kit" in groups else {}
+        print(mass_report(groups["mosfet"], extra))
     if not args.no_export:
         print(f"\nexported to {OUT}")
 
