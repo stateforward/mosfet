@@ -4,6 +4,9 @@ import { firstRunCost, isTaskId, TASKS, type Task, type TaskId } from "./tasks.t
 
 export type Speaker = "you" | "bot" | "step" | "result" | "note";
 
+/** Milestones the owner reacts to. */
+export type MakerMoment = "learned" | "free";
+
 export type Line = { readonly who: Speaker; readonly text: string; readonly cost?: number };
 
 const stepDelay = (): number => Maker.stepMs;
@@ -32,7 +35,7 @@ export class Maker extends hsm.Instance {
   static readonly changedEvent = { name: "maker.changed", kind: hsm.Kinds.Event } as const;
 
   /** Idle time before the demo starts a job by itself; 0 disables it. */
-  static autoplayMs = 1600;
+  static autoplayMs = 900;
   static startMs = 300;
   static stepMs = 650;
   static learnMs = 900;
@@ -236,7 +239,8 @@ export class Maker extends hsm.Instance {
     instance.runs += 1;
     instance.freeRuns += 1;
     instance.lines.push({ who: "result", text: instance.task.learnedResult, cost: 0 });
-    Maker.show(ctx, instance, "happy");
+    // The first free run is the payoff the whole demo builds to.
+    Maker.show(ctx, instance, "happy", instance.freeRuns === 1 ? "free" : undefined);
   }
 
   static forget(ctx: hsm.Context, instance: hsm.Instance): void {
@@ -254,16 +258,27 @@ export class Maker extends hsm.Instance {
 
   /**
    * Tell the owner something changed. `moment` names a milestone worth reacting
-   * to (only "learned" today), because the state path read during an entry
+   * to ("learned" when it keeps the lesson, "free" on the first run that costs
+   * nothing), because the state path read during an entry
    * action can still be the previous state.
    */
-  private static show(_ctx: hsm.Context, instance: Maker, expression: ExpressionName, moment?: "learned"): void {
+  private static show(_ctx: hsm.Context, instance: Maker, expression: ExpressionName, moment?: MakerMoment): void {
     instance.expression = expression;
     void hsm.notifyOwner({
       instance,
       event: hsm.typedEvent({ event: Maker.changedEvent, data: { state: instance.state(), moment } }),
     }).catch(hsm.catchFailure(hsm.ownerTarget(instance)));
   }
+}
+
+/**
+ * Which of the demo's three beats is current, from a Maker state path:
+ * 1 it does the job, 2 you correct it, 3 it runs free, 4 all done.
+ */
+export function phaseOf(state: string, freeRuns: number): number {
+  if (state.endsWith("/reviewing") || state.endsWith("/learning")) return 2;
+  if (state.startsWith("/Maker/learned")) return freeRuns > 0 ? 4 : 3;
+  return 1;
 }
 
 function field(event: hsm.Event, key: string): unknown {
