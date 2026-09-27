@@ -62,7 +62,7 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
             (40, 0, 230),
             1.1,
         ),
-        # the drum seated in the cradle's U, cut at y = -12 so the SENSE and GND pins show under the skid
+        # the drum seated at the foot of the cradle's curve, cut at y = -12 so the SENSE and GND pins show under the skid
         "dock_section": (section(whole, -12.0), (-20, 1300, 150), (-20, 0, 120), 1.3),
     }
     k = kit()
