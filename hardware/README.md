@@ -29,11 +29,11 @@ on any axis (256 mm less 3 mm margin each side).
 
 | File | What |
 |---|---|
-| `mosfet_cad/params.py` | every driving dimension: character ratios, bought-part sizes, `SpringSpec`, `StalkSpec`, `EyeSpec`, docked pose |
+| `mosfet_cad/params.py` | every driving dimension: character ratios, bought-part sizes, `SpringSpec`, `StalkSpec`, `EyeSpec`, `CellSpec`, `PackSpec`, docked pose |
 | `mosfet_cad/stalk.py` | spring, base plate, guide disc, tip plate, tendon pulley, stalk servo pod |
 | `mosfet_cad/eye.py` | eye bezel with camera bump and chin, eye back cover |
 | `mosfet_cad/kit.py` | the spring-stalk test kit |
-| `mosfet_cad/body.py` | drum halves, end caps, tray, shelf, battery sling, driver mount, skid, gears, arms, wheels |
+| `mosfet_cad/body.py` | drum halves, end caps, tray, shelf, battery cradle, driver mount, skid, gears, arms, wheels |
 | `mosfet_cad/dock.py` | charging dock: curved stop cradle with the pins in its seat, tower with the tag |
 | `mosfet_cad/assembly.py` | the whole bot in its docked pose, on the dock |
 
@@ -185,15 +185,105 @@ It's a 3.4" round IPS, 800×800, 87.6 mm active area on a Ø115 outline, with it
   flat and **diagonally**: 210 × 210 mm on the bed.
 - **Wheels:** PETG rim (Ø156 cup, lightening holes) plus a **TPU 95A tyre**, 8 mm thick with 36 tread grooves,
   0.5 mm stretch fit.
-- **Inside** (see `bot_section.png`): tray at z −70, Jetson Orin Nano Super on M2.5 standoffs (86 × 58 pattern,
-  UNVERIFIED). Above it, an electronics shelf with the Teensy 4.1, the BNO085 within 20 mm of the drum axis,
-  and the bus-servo adapter. The battery hangs low and forward in a sling under the tray. The MDD10A stands on
-  the driver mount at the back. The 12 V and 5 V regulators and the charge module sit on the front of the tray.
-  The stalk servo pods (three servos each) sit forward against the end caps: centre x = 67, bottom z = −20.
-  They're 2.3 mm in front of the shelf, 8 mm below the arm gear, and 3.5–4.8 mm inside the drum wall. Their
-  PTFE tubes run up and back to the crown pedestals. The arm servos and gears sit next to the end caps.
+- **Inside** (see `bot_section.png`): the battery fills the bottom of the drum (see Battery, below), and the rest
+  stacks on it. The tray is the pack's lid: z −43 to −39, 2 mm over the pack's wrap, bolted to both end caps by four
+  tabs (x −40 and 25). On it: the Jetson Orin Nano Super on M2.5 standoffs (86 × 58 pattern, UNVERIFIED), board
+  back edge at x −65, heatsink top at z +1. Across the front of the tray are the 4S BMS, both regulators and the
+  charge module. A slot at x 88–100 lets the pack leads up from the lead bay in front of the pack. The electronics
+  shelf is at z 9–12, 8 mm over the heatsink and 0.9 mm under the arm servo mounts, on four posts outside the
+  Jetson board. It carries the Teensy 4.1 and the BNO085, 14 mm from the drum axis. The driver mount is an upright
+  plate behind the Jetson, bolted to both end caps. The MDD10A hangs on its back and the bus-servo adapter on its
+  front. The stalk servo pods (three servos each) sit forward against the end caps: centre x = 67, bottom z = −20.
+  The charge module stands in the gap between them, its top 1 mm below theirs. The pods' PTFE tubes run up and back
+  to the crown pedestals. The arm servos and gears sit next to the end caps. Each arm servo mount's lower post is
+  behind the servo (x −58), clear of the heatsink and the shelf.
+- **Lead path from the arms.** The motor and encoder leads come out of each hollow arm hub (Ø19 bore) at
+  |y| = 44. They run down the band |y| 40–58, x −16 to 12, between the shelf posts and past the Jetson, to the
+  tray. Nothing sits in that band. It's also the route for extra packs in the arms, later: their leads come
+  through the same hub bore to the BMS (see Open questions).
 - **Skid:** a 4 mm PETG ski on the drum's back-bottom (UHMW tape on the running surface) with recesses for the
-  three brass charge pads.
+  three brass charge pads. Its two M3 screws go through the shell into the battery cradle (thread-forming screws in
+  Ø2.5 pilots), which holds the cradle in place. The pad wires come through the shell into a 4 × 2.5 mm groove in
+  the cradle's underside, run along it to the ends of the drum, and go up beside the end caps.
+
+## Battery
+
+**4S6P Samsung 50S: 30 Ah, 432 Wh, about 1.8 kg**, custom-built (spot-welded nickel strip, fishpaper, PVC wrap),
+lying low in the drum in a printed cradle (`PackSpec` in `params.py`, `cradle()` in `body.py`). The system stays 4S
+(16.8 V full, 12.0 V empty) because the Jetson, the regulators, the charger and the dock all assume it.
+
+- **Layout.** The 24 cells lie fore-aft (along x) in three layers of five across the drum (y). Each layer shifts
+  half a pitch across and nests into the grooves of the one below, so the layers are 18.5 mm apart instead of 21.4.
+  They step up the drum's curved bottom:
+  - bottom layer: one cell long (x −32 to 40), 5 slots with the middle one empty (the BMS thermistor goes there);
+  - middle layer: two cells end to end (x −72 to 72). It just fits: its end corners are 3 mm off the shell;
+  - top layer: two cells long, shifted 12 mm forward (x −60 to 84).
+
+  The pack is 157 × 118 × 58 mm over all, stepped, from z −104 to −45.5. Its cells' centre is at x 5.7, y −0.9,
+  z −70. Each series group is five cells in one end of the middle or top layer plus one cell from the bottom
+  layer. The pack builder should confirm the busbar plan.
+- **Why 21700s in nested layers.** The space under the tray is a circle segment 134 mm long between the end caps,
+  and a cell has to fit whole. Cells along y waste half that length: a 21700 is 71 long, and two 18650s end to end
+  (131) don't fit with walls. Cells along x in nested rows fill it best. With the tray as high as it goes, that's 25
+  slots of 21700 (4S6P, 432 Wh) against 30 of 18650 (4S7P, 353 Wh) or 12 of 26650 (4S3P, 216 Wh). LiFePO4
+  (32700) is out: 4S LFP tops out at 14.6 V, not 16.8. 46xx cells aren't reliably sold to individuals. The tray
+  sets the limit. Put it 12 mm lower and the top layer is gone (4S3P). It can't go higher without moving the Jetson
+  off it, because the shelf above is already 0.9 mm under the arm servo mounts and the BNO085 has to stay near the
+  axis.
+- **Cells.** Samsung INR21700-50S: 5.0 Ah, 25 A continuous, 69 g, Ø21.25 × 70.8 max (dimensions and mass
+  UNVERIFIED). Any 5 Ah 21700 up to Ø21.3 × 70.9 fits the 21.4 pitch: the Samsung 50E, or the Molicel P50B if its
+  diameter measures under the pitch. Buy all 24 from one lot, from a reseller that tests (18650batterystore, IMR
+  Batteries).
+- **BMS: 4S Li-ion, ≥ 40 A continuous, with balancing.** For example a Daly 4S 40 A, or a JBD/Overkill 4S smart
+  BMS so the Teensy can read state of charge over UART. It sits on the tray (60 × 40 × 12 envelope, UNVERIFIED).
+  The worst case is about 30 A: both wheel motors stalled at 16.8 V (2 × 7.7 A), all eight servos pulling through
+  the D24V150F12 (≤ 15 A at 12 V, about 11.5 A from the pack), and the Jetson (25 W, 1.7 A). That's 5 A per cell,
+  1 C against a 25 A rating. Normal driving draws 1.7 A.
+- **Cradle.** A curved trough that sits on the shell, open upward, with a stepped pocket for each layer (0.8 mm over
+  the wrap) and 2 mm side walls. Its floor is 1.7 mm at the thinnest, under the middle layer's ends. The tray above
+  is the lid: stick 2 mm EVA foam on top of the pack. At the back, above z −51, the cradle stops at x −66.5 to
+  clear the MDD10A. At the front, the space between the pack and the shell is the lead bay: the pack leads come over
+  a notch in the front wall and up through the tray slot to the BMS. The cradle is 162 × 123 × 70 mm and prints
+  curved side down, with tree supports under the curve.
+- **Runtime** on 90% of 432 Wh, with the old 4S2P 12 Ah (173 Wh) for comparison:
+
+  | | draw | 4S6P, 432 Wh | 4S2P, 173 Wh |
+  |---|---|---|---|
+  | idle (docked or sitting, Jetson idle) | ~3 W | 130 h (5.4 days) | 52 h |
+  | awake (looking, talking, eyes on) | ~12 W | 32 h | 13 h |
+  | driving (balancing and rolling) | ~25 W | 16 h | 6.2 h |
+
+- **Shipping.** 432 Wh is over the 100 Wh and 160 Wh airline limits. The bot can't fly with the pack in it, and a
+  built pack ships as Class 9 dangerous goods.
+
+## Mass and balance
+
+These are estimates from the CAD volumes (PETG at the print table's infill), the pack, and bought-part masses. The
+bought parts are all UNVERIFIED: Jetson 200 g, 37D motor 195 g, STS3250 70 g, display 80 g, and 300 g of wiring
+and fasteners.
+
+| | 4S2P 12 Ah in the old sling | 4S6P 30 Ah in the cradle |
+|---|---|---|
+| total | 4.97 kg | **6.26 kg** |
+| body (drum, internals, stalks, eyes) | 3.40 kg | 4.70 kg |
+| body CoM, drum frame (x, z) | 7.3, +12.9 | 4.6, −6.7 |
+| whole-bot CoM, docked pose, drum frame (x, y, z) | 42.9, 0.1, −8.8 | 33.5, −0.3, −19.0 |
+
+The pack pulls the body's centre of mass down 20 mm, to below the drum axis, and 2.7 mm back. It can't go further
+forward, because the middle layer spans the whole chord.
+
+- **Standing up.** In the worst case the whole body hangs on the arm pivots, with the arms at 50° and the wheels
+  rolling freely: 4.70 kg × g × 184 sin 50° = 6.5 N·m. That's 3.25 N·m per arm and 1.62 N·m at each STS3250
+  through the 2:1 (1.18 before), a third of its ≈ 4.9 N·m stall (50 kg·cm at 12 V, UNVERIFIED). Driving the
+  wheels back under the body takes some of that.
+- **Balancing.** With the arms straight down, the body's CoM is 132 mm over the axle (152 before). Holding a 5°
+  lean takes 0.27 N·m per wheel motor. The 37D 50:1 stalls at 2.06 N·m at 12 V, and Pololu suggests keeping
+  continuous loads under about 1 N·m (UNVERIFIED). At 1 N·m each the motors hold a 19° static lean, or accelerate
+  the whole bot at 3.7 m/s², enough to recover about 20°. The lower CoM falls a little faster (√(h/g) is 116 ms
+  instead of 125 ms), so retune the balance loop.
+- **Docked.** The centre of mass is 37 mm ahead of the skid contact and the wheels are 153 mm ahead, so the wheels
+  carry 24% (15 N) and the skid 76% (29% and 71% before). The pads press on the pins harder. The dock geometry
+  and `docked_pose` don't change.
 
 ## Charging dock
 
@@ -253,13 +343,15 @@ bot faces the room, and none of the charging hardware shows from the front (`bot
   - Once docked, the tag is behind the drum at |y| ≤ 47, below the crown, so it only shows from the side or
     from behind. From a standing adult's height you can see over the drum, and the top of the tower shows.
 - **Docked detection.** The bot sees charger input voltage on a divider into the Teensy ADC.
-- **Power path.** Unattended charging needs a pack with a BMS. The bare RC LiPo in the research draft is
-  replaced by a **4S1P 21700 Li-ion pack with BMS**: Keeppower 6000 mAh, 90 × 75 × 22.8 mm,
-  [product](https://keeppower.com/product/4s1p-21700-14-4v-6000mah-li-ion-battery-pack-with-amass-xt30u-connector/).
-  The dock takes 24 V from a laptop-style adapter into a panel jack on the tower's back (Ø11 hole,
-  UNVERIFIED). On the bot, a CC/CV buck module (XL4015-class, 5 A, set to 16.8 V / 1.5 A) charges the pack.
-  The Teensy measures charge current (INA219) and cuts the charger off when it tapers below C/10, so the pack
-  doesn't sit at 4.2 V/cell. The BMS is the backstop.
+- **Power path.** Unattended charging needs a pack with a BMS: the **4S6P pack** (see Battery). The dock takes
+  24 V from a laptop-style adapter into a panel jack on the tower's back (Ø11 hole, UNVERIFIED). On the bot, a
+  CC/CV buck module charges the pack at 16.8 V. At the old 1.5 A setting the 30 Ah pack would take about 20 hours,
+  so the charger goes up to **5 A** (0.17 C, about 6.5 hours from empty). That needs an XL4016-class 8 A module:
+  the 5 A XL4015 runs hot above 4 A. It draws about 4–4.3 A at 24 V with the bot idle or awake, so the adapter
+  is 24 V ≥ 5 A (120 W), and each dock pin (Mill-Max 0873, 9 A) carries under half its rating. The Teensy measures
+  charge current and cuts the charger off when it tapers below C/20 (1.5 A), so the pack doesn't sit at
+  4.2 V/cell. The BMS is the backstop. The INA219 breakout's 0.1 Ω shunt reads only ±3.2 A, so use an INA226
+  board with a 10 mΩ shunt.
 - **Parts.** Cradle (234 × 184 × 134) and tower (100 × 140 × 230), joined by two printed dog-bone keys in
   pockets on the underside, across the seam at x = −125. Both fit the X1. The whole dock is 285 × 184.
 
@@ -284,11 +376,14 @@ come from the parts research draft, which isn't in the repo.
 | Waveshare Bus Servo Adapter (A) | 1 | [Waveshare](https://www.waveshare.com/bus-servo-adapter-a.htm) | $4.99 |
 | Pololu D24V150F12 (12 V servo bus) | 1 | [Pololu 2885](https://www.pololu.com/product/2885) | $79.95 |
 | Pololu D36V50F5 (5 V logic) | 1 | [Pololu 4091](https://www.pololu.com/product/4091) | |
-| 4S1P 21700 Li-ion pack w/ BMS, 6000 mAh | 1 | [Keeppower](https://keeppower.com/product/4s1p-21700-14-4v-6000mah-li-ion-battery-pack-with-amass-xt30u-connector/) | 90 × 75 × 22.8; XT30U |
-| CC/CV buck charge module, 5 A (XL4015-class) | 1 | generic (Amazon) | set 16.8 V / 1.5 A; dims UNVERIFIED |
-| Ideal diode module (charge input) | 1 | generic | keeps the pads dead from the battery |
-| INA219 current sensor | 1 | [Adafruit 904](https://www.adafruit.com/product/904) | charge termination |
-| 24 V ≥2.5 A DC adapter (dock) | 1 | any laptop-style brick | |
+| Samsung INR21700-50S cells (5.0 Ah, 25 A) | 24 + 2 spare | 18650batterystore, IMR Batteries (price UNVERIFIED) | the 4S6P pack, one lot; or Samsung 50E, Molicel P50B if ≤ Ø21.3 |
+| 4S Li-ion BMS, ≥ 40 A, balancing | 1 | Daly 4S 40 A, or JBD/Overkill 4S smart BMS (UART) | 60 × 40 × 12 envelope UNVERIFIED |
+| Pure nickel strip 0.15 × 8 mm, fishpaper rings, PVC wrap, XT60 | 1 set | Amazon | for the pack; needs a spot welder, or have a pack shop build it |
+| CC/CV buck charge module, 8 A (XL4016-class) | 1 | generic (Amazon) | set 16.8 V / 5 A; 39 × 23 × 18 modelled, dims UNVERIFIED |
+| EVA foam 2 mm | 150 × 120 mm | craft store | between the pack and the tray |
+| Ideal diode module (charge input), ≥ 6 A | 1 | generic | keeps the pads dead from the battery |
+| INA226 current sensor, 10 mΩ shunt | 1 | generic (Amazon) | charge termination; the INA219's 0.1 Ω shunt tops out at 3.2 A |
+| 24 V ≥ 5 A (120 W) DC adapter (dock) | 1 | any laptop-style brick | for charging at 5 A |
 | 5.5 × 2.1 mm panel DC jack | 1 | generic | dock tower, rear face |
 | 940 nm 5 mm IR LED | 1 | generic | optional homing beacon |
 | Mill-Max 0873 spring power pins | 3 | [Mill-Max](https://www.mill-max.com/products/discrete-spring-loaded-pins/through-hole-mount-spring-loaded-pin/0873/0873-0-15-20-82-14-11-0) | dock contacts |
@@ -317,7 +412,8 @@ come from the parts research draft, which isn't in the repo.
 | arm gear / pinion | 2 + 2 | PETG or PA-CF | flat | 0.12 mm, 100% |
 | wheel rim | 2 | PETG | hub face down | 0.2 mm, 3 walls, 20% |
 | tyre | 2 | TPU 95A | on its side | 0.2 mm, 3 walls, 15% gyroid, slow (≤ 40 mm/s) |
-| tray, shelf, sling, driver mount, arm servo mounts, skid | 1 each / 2 | PETG | flat | 0.2 mm, 3 walls, 20% |
+| tray, shelf, driver mount, arm servo mounts, skid | 1 each / 2 | PETG | flat | 0.2 mm, 3 walls, 20% |
+| battery cradle | 1 | PETG | curved side down, as modelled | 0.2 mm, 3 walls, 15% gyroid; tree supports under the curve |
 | dock cradle, keys | 1 / 2 | PETG | flat, curve up | 0.24 mm, 3 walls, 15%; the curve is supported by the solid behind it, no supports |
 | dock tower | 1 | PETG | upright, bay opening down | 0.24 mm, 3 walls, 15%; the 20° lean needs no supports |
 
@@ -325,8 +421,8 @@ Heat-set inserts go in at 230 °C after printing. The bearing bores are nominal 
 cap first and adjust `BEARING_FIT` in `params.py` to your printer.
 
 Fit report (`uv run python build.py`, current parameters): all 34 distinct printed parts fit. The largest are
-the drum halves (236 × 150 × 118, 124 for the upper with its pedestals), the end caps (229.6 × 229.6 × 22), the arms (210 × 210 diagonal), and the dock
-cradle (234 × 184 × 134) and tower (100 × 140 × 230), all against a 250 mm per-axis limit.
+the drum halves (236 × 150 × 118, 124 for the upper with its pedestals), the end caps (229.6 × 229.6 × 22), the arms (210 × 210 diagonal), the battery
+cradle (162 × 123 × 70), and the dock cradle (234 × 184 × 134) and tower (100 × 140 × 230), all against a 250 mm per-axis limit.
 
 ## Open questions
 
@@ -341,5 +437,13 @@ cradle (234 × 184 × 134) and tower (100 × 140 × 230), all against a 250 mm p
 4. **Arm clamshell screws** go through the arm's full thickness. If the arm flexes at 2.9 kg, add a rib or print
    the halves at 40% infill.
 5. **Sim update:** heavier eyes (about 160 g), the stiffer 3/4 in spring (EI 0.137 instead of 0.011), the
-   roots on the crown at y = ±48 with 5° of splay instead of 25° forward, and the 21700 pack mass/placement should
-   go into `sim/bot.py` before the controllers are retuned. The sim's three cables at 120° already match.
+   roots on the crown at y = ±48 with 5° of splay instead of 25° forward, and the 4S6P pack should go into
+   `sim/bot.py` before the controllers are retuned. The pack is about 1.8 kg, 38% of the body, centred 0.05 R
+   forward and 0.59 R down (the sim has 0.55 R and 0.4 R). The sim's three cables at 120° already match.
+6. **Packs in the arms.** Each arm is hollow and its hub bore (Ø19) is already the lead path, so a 4S pack can ride
+   in an arm with its leads through the hub. Packs are only safe to parallel at the same voltage, so give each arm
+   pack its own BMS and fuse and join it through ideal-diode ORing (or a precharge switch), not straight onto the
+   main pack. It adds mass low and forward when the arms are parked, and swinging mass when they move. Size it once
+   the bot runs.
+7. **Pack build:** confirm the series-group busbar plan with whoever welds it, glue the layers so the nesting holds,
+   and put the BMS thermistor in the bottom layer's empty slot.
