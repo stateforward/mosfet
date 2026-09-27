@@ -9,7 +9,7 @@ cd hardware
 uv sync
 uv run python -m ocp_viewer --port 3939 &   # live viewer: open http://localhost:3939
 uv run python build.py                      # build, check fit, export, show in the viewer
-uv run python build.py --only kit           # just the stalk test kit
+uv run python build.py --only kit           # just the spring-stalk test kit
 uv run python build.py --clash --no-show    # also list every pair of overlapping parts
 uv run python shots.py out/shots            # render the proof views through the viewer
 uv run python shots.py out/shots 3947 10    # ...through a second viewer on 3947, 10 s per view (headless GL)
@@ -20,17 +20,19 @@ uv run python shots.py out/shots 3947 10    # ...through a second viewer on 3947
 - `out/mosfet.step`, `out/stalk_kit.step`: assemblies with named, coloured parts, for Shapr3D or any CAD.
 - `out/print/<part>.3mf` and `.stl`: one file per distinct printed part, already in its print orientation,
   centred and sitting on the bed, for Bambu Studio. The fit report says how many of each to print.
-- `out/print/fit_segment_i020..i035.stl`: the ball/socket interference sweep (see the stalk kit below).
+
+It also prints the stalk spring's numbers: bending stiffness, axial rate, the tendon pull for a 90° bend and how
+much the spring shortens under it.
 
 The build fails (exit 1) if any printed part's bounding box, in its print orientation, is bigger than 250 mm
 on any axis (256 mm less 3 mm margin each side).
 
 | File | What |
 |---|---|
-| `mosfet_cad/params.py` | every driving dimension: character ratios, bought-part sizes, `StalkSpec`, `EyeSpec`, docked pose |
-| `mosfet_cad/stalk.py` | ball/socket segment, stalk base and tip, double pulley, stalk servo pod |
-| `mosfet_cad/eye.py` | eye bezel with camera bump, eye back with mounting post |
-| `mosfet_cad/kit.py` | the stalk test kit and the fit sweep |
+| `mosfet_cad/params.py` | every driving dimension: character ratios, bought-part sizes, `SpringSpec`, `StalkSpec`, `EyeSpec`, docked pose |
+| `mosfet_cad/stalk.py` | spring, base plate, guide disc, tip plate, tendon pulley, stalk servo pod |
+| `mosfet_cad/eye.py` | eye bezel with camera bump and chin, eye back cover |
+| `mosfet_cad/kit.py` | the spring-stalk test kit |
 | `mosfet_cad/body.py` | drum halves, end caps, tray, shelf, battery sling, driver mount, skid, gears, arms, wheels |
 | `mosfet_cad/dock.py` | charging dock: curved stop cradle with the pins in its seat, tower with the tag |
 | `mosfet_cad/assembly.py` | the whole bot in its docked pose, on the dock |
@@ -48,65 +50,87 @@ proportion comes from `GEOMETRY` in `sim/bot.py`:
 | drum | Ø236 × 150 |
 | wheels | Ø172 × 73 (TPU tyre 8 mm on a Ø156 rim) |
 | arms | 184 pivot to axle, 80 wide, 36 thick; pivot 45 above the drum axis; parked 50° forward |
-| stalks | 166 long (base plate to tip top), roots 25° forward of the top, 78 apart |
-| eyes | Ø124 bezel (Ø115 round display), camera bump on the rim |
-| overall, docked | 372 wide (tyre to tyre), 357 long, 546 tall; dock 285 × 184 |
+| stalks | 160 long (base plate to tip top), roots on the crown straight above the drum axis, 96 apart, splayed 5° outward |
+| eyes | Ø124 bezel (Ø115 round display), camera bump on the rim; screen centre on the stalk axis, 68 above the tip |
+| overall, docked | 372 wide (tyre to tyre), 357 long, 530 tall; dock 285 × 184 |
+
+**Everything is on the centreline.** In side view the stalk roots, the stalk axes and the screen centres all
+lie in the x = 0 plane, straight above the drum and arm-pivot axis, mirror-symmetric about y = 0. The drawing's
+root spread (0.26 × 150 = 39 mm each side) would put two Ø120 eyes on top of each other, so the roots sit at
+y = ±48 (the Ø47 pedestals end at |y| 71.5, inside the drum's 75) and each stalk leans 5° outward, sideways only.
+The screen centres end up at y = ±67.9, 136 apart, with a 16 mm gap between the bezels. Gravity pulls a splayed
+stalk further out, so the gap only grows.
 
 Docked, the bot sits on its wheels (on the floor) and its skid (on the dock's 6 mm seat). The skid
-touches at 12.1° behind the drum's bottom, so the body pitches back 12.1°, and the stalks bend forward by the
-same amount to keep the eyes level (`params.docked_pose`). On a flat floor (`lift=0`) the pitch comes from
-the common tangent of the wheel circle and the skid circle: 14.4°.
+touches at 12.1° behind the drum's bottom, so the body pitches back 12.1° (`params.docked_pose`), and the
+straight stalks and the screens pitch back with it: docked, the screens look 12.1° up. Nothing leans forward to
+cancel it. A fore-aft offset would take the eyes off the centreline, and a bent spring costs constant servo
+torque. The screens are level whenever the body is. On a flat floor (`lift=0`) the pitch comes
+from the common tangent of the wheel circle and the skid circle: 14.4°.
 
-## Stalk test kit (print this first)
+## Spring-stalk test kit (print this first)
 
-`uv run python build.py --only kit`: one stalk (base, 7 segments, tip), one eye, one servo pod with two pulleys.
+`uv run python build.py --only kit`: one stalk (base plate, spring, 5 guide discs, tip plate), one eye, and one
+servo pod with three pulleys.
 
-**Segments are printed Loc-Line.** Each segment has a socket at the bottom and a Ø20 ball at the top, 18 mm
-apart. The socket snaps over the ball below it and holds it by friction, so the stalk keeps a pose with the
-power off. There are no springs.
+**The spine is a compression spring.** It's a bought music-wire spring, 3/4 in OD × 0.120 in wire (Ø19.05 ×
+3.05), cut to 150 mm with plain ends and about 9 mm pitch (`STEEL_SPRING`; part number and pitch UNVERIFIED:
+any 9657K-series or Lee Spring LC-series long stock that measures close). With no tendon pulling, the spring
+holds the stalk straight up. Pulling one or two tendons bends it toward them, and letting go springs it back.
+That's the same model as `sim/bot.py`, where the stalk is a springy segment chain with three cables through guide
+discs.
 
-- **Fit.** The socket cavity is 0.25 mm (diametral) smaller than the ball (`interference`). The mouth wraps
-  0.5 mm past the ball's equator (`snap`). Four 1 mm slits in the skirt let it snap on and set how hard it
-  grips. FDM tolerance varies by printer and filament, so `build.py` also exports
-  `fit_segment_i020/025/030/035`. Print three of each, snap them together, and keep the stiffest pair that
-  still moves smoothly. Then set `StalkSpec.interference` to match.
-- **Range.** The CAD hits a hard stop at about 34° per joint (checked by rotating a segment until the solids
-  collide). Eight joints give roughly 270° of total bend, enough to curl the eye down and look behind.
-- **Cables.** A Ø10 bore runs the full length and flares where it leaves each ball, so a lead never meets a
-  sharp edge. The flare also trims the ball's crown, which adds tilt clearance. It carries the eye's USB-C
-  lead, or the 9 mm IMX219 flex in the fallback wiring below.
-- **Print.** As modelled: socket down, ball up, no supports. PETG, 0.2 mm layers, 4 walls, 40% gyroid. The
-  cavity crown bridges over the bore, which is fine because the crown isn't a contact surface. About 6 g each.
+- **Stiffness.** Bending stiffness is what matters: EI = d⁴p / (32D(1/E + 1/2G)) = 0.137 N·m² for this coil
+  (`SpringSpec.ei`; `build.py` prints it). It's sized for the eye, about 160 g with the tip plate, whose centre
+  sits 73 mm above the spring's top. The sideways load that would buckle that is EI / (L²/2 + aL) = 6.2 N,
+  about 4× the eye's weight. So the 5° splay sags only to about 6.7°, and a nudge settles instead of flopping.
+  The sim's softer 1/2 in spring (EI 0.011) would fold under this eye.
+- **Cost of a bend.** A 90° bend takes 1.43 N·m at the root, which is 98 N on a tendon at r = 14.5, or 0.98 N·m
+  at the 10 mm pulley: about a third of an STS3215's stall (≈2.9 N·m at 12 V, UNVERIFIED). Spectra 65 lb is
+  good for 289 N. Held bends cost that torque the whole time, so the rest pose is straight: the pedestals set the
+  splay, and no servo holds anything.
+- **It shortens under the tendons.** For a spring the shortening at a bend θ is about D²θ / (3.5 r), whatever
+  the wire, which is 7.8 mm at 90° here (axial rate 12.6 N/mm). There's 99 mm of gap before the coils bind.
+- **Collars and guide discs screw onto the coil.** Each has a helical groove cut by the spring itself plus
+  0.25 mm (`clearance`), so it threads on along the coil and stays put without glue. The base and tip collars
+  grip 1.5 turns. The five Ø35 guide discs (4 mm thick, at 21, 48, 75, 102 and 129 mm up the spring) sit a whole
+  number of pitches apart (27 mm = 3 pitches), so they're one part, printed 5 times per stalk. Each carries the
+  three tendon holes on r = 14.5, 5 mm off the spring. Standing the tendons off the spring is what gives them
+  leverage.
+- **Cables.** The display lead runs up the middle of the spring (ID 13) and through Ø12 bores in the plates.
+  The USB-C plug has to fit through, so it needs a slim overmold of ≤ 11.5 mm (UNVERIFIED), or fit the plug
+  after threading the cable.
+- **Printed spring instead.** `PRINTED_SPRING` is a PETG coil, Ø30 × 6 mm wire at 12 mm pitch. Swap it in
+  (`StalkSpec(spring=PRINTED_SPRING)`) and the collars, discs, plates and pedestal all resize from it; the kit
+  builds and fits. PETG is about 100× softer than steel, though. That coil's EI is 0.017 N·m² (UNVERIFIED:
+  layer lines, creep), and it buckles under about 0.75 N, less than half the eye. It's for bench-testing the
+  tendons and discs with a dummy eye, not for carrying the display. Print it upright with tree supports under
+  the coils. A printed coil stiff enough for the eye would be Ø36 or more, and its pedestal wouldn't fit inside
+  the drum at y = ±48.
 
-**Tendons: 4 at 90°, in two antagonistic pairs, one double pulley per pair.** That's 2 servos per stalk, 4 in
-total. The research draft proposed 3 at 120° on 3 servos, because a spring spine shortens under tension and
-lets an antagonistic pair go slack. A ball-and-socket chain can't shorten: the balls sit in their sockets. So
-the argument against pairs goes away:
+**Tendons: 3 at 120°, one servo each.** That's 3 STS3215s per stalk and 6 in all, up from 4 with the Loc-Line
+stalk. A spring shortens when a tendon pulls it (7.8 mm at 90°, above), so an antagonistic pair on one double
+pulley would go 7.8 mm slack on the far side and give the stalk backlash every time it changed direction.
+Independent tendons stay taut, and three at 120° reach every bending direction. It's also what the sim models.
+One tendon runs straight back and two run forward at ±60°. That's mirror-symmetric, so both stalks use the same
+parts.
 
-- For the real hole positions (exit 12.6 mm below each pivot, entry 1.5 mm above it, r = 12), the pulled side
-  shortens by 6.66 mm at a joint's full 34° while the other side lengthens by 6.86 mm. A double pulley pays
-  out equal lengths, so each joint at full bend leaves 0.2 mm of slack, and 0.04 mm at 10°. Pretension and
-  Spectra's low stretch cover that.
-- The joints hold themselves by friction, so the stalk doesn't need co-contraction to stay stiff. When it does
-  need to be stiffer, pretensioning both pairs clamps every ball into its socket and raises the friction.
-- Two pairs cover both bending planes (fore/aft and sideways), which is all a stalk needs. The camera looks
-  wherever the stalk points.
-- It saves 2 servos per bot (−110 g, about −$45) and keeps the pod small enough to fit inside the drum.
-- Loads: an eye of about 170 g at 166 mm puts about 0.28 N·m on the root joint. At r = 12 that's 23 N of tendon,
-  or 0.23 N·m (2.4 kg·cm) at the 10 mm pulley, about 8% of an STS3215's stall. Travel for 180° of stalk bend is
-  12 mm × π = 38 mm of tendon, or about 216° of servo rotation.
+Tendons: 0.41 mm PowerPro Spectra (65 lb). Each passes through its pulley's cross hole and is knotted. At the
+tip they're knotted in Ø3 counterbores on the tip plate's top face, which the eye's chin then covers. Between
+the pod and the stalk base they run in 2 × 4 mm PTFE tube that seats in counterbores under the base plate and
+in the pedestal.
 
-Tendons: 0.41 mm PowerPro Spectra (65 lb). At the pulley, each tendon passes through its groove's cross hole
-and is knotted. The two tendons of a pair wrap their grooves in opposite directions. At the tip they're knotted
-in Ø3 counterbores on the tip's top face, which the eye then covers. Between the pod and the stalk base they
-run in 2 × 4 mm PTFE tube that seats in the base's counterbores.
+**Base plate** (Ø47) bolts to its pedestal on the drum with 3 × M3 on Ø39 (heat-set inserts in the pedestal).
+**Tip plate** (Ø43) takes the eye's chin with 2 × M3 from below. Their heads sit beside the collar and screw
+into inserts in the chin. **Servo pod** holds three STS3215s side by side, shafts up, and bolts to the end cap
+through a 2-hole flange. The M2 holes in its floor and the shaft offset are UNVERIFIED: check them against the
+STS3215 STEP from [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100). **Pulleys** are
+single-groove, Ø20 at the groove, and bolt to the stock horn with 4 × M2 on a Ø14 circle (UNVERIFIED horn
+pattern).
 
-**Stalk base** bolts to its pedestal on the drum with 3 × M3 on Ø36 (heat-set inserts in the pedestal).
-**Stalk tip** takes 4 × M3 × 5.7 heat-set inserts (Ø4.0 holes) for the eye. **Servo pod** holds two STS3215s
-shafts-up and bolts to the end cap through a 2-hole flange. The M2 holes in its floor and the shaft offset are
-UNVERIFIED: check them against the STS3215 STEP from
-[TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100). **Pulleys** bolt to the stock horn with
-4 × M2 on a Ø14 circle (UNVERIFIED horn pattern).
+**Try on the bench:** screw the discs on and thread the tendons. Hang the eye (or 160 g) on the tip and check
+the sag against the numbers above. That's the real test of `SpringSpec.ei`. Then pull each tendon with its
+servo and measure the pull and the shortening.
 
 ## Eyes
 
@@ -125,22 +149,30 @@ It's a 3.4" round IPS, 800×800, 87.6 mm active area on a Ø115 outline, with it
   them. The P4 can also carry its camera back as a USB video device, so nothing else goes up the stalk. That
   camera path over USB is UNVERIFIED: check that ESP-IDF's `esp_video`/`usb_device_uvc` supports the IMX219 on the
   P4 before relying on it (OV5647 is the safe sensor there). The fallback keeps the research plan: an Arducam IMX219
-  spy camera with a 300 mm extension, straight to the Jetson's CSI ports, 9 mm flex in the Ø10 bore, with the
+  spy camera with a 300 mm extension, straight to the Jetson's CSI ports, 9 mm flex up the Ø12 bore, with the
   display on Wi-Fi and only power up the stalk.
+- *Mount: the screen stands on its stalk.* The stalk meets the eye at the bottom of its rim (6 o'clock). The
+  screen stands straight up in line with the stalk axis, and its centre sits on that axis (x = 0, y = 0), 68 mm
+  above the tip plate: the rim radius plus an 8 mm chin. The display glass is on the axis too, so the eye's
+  body sits 2 mm in front of it and 20 mm behind. The chin is a 36 × 20 mm lug at the bottom of the bezel. It
+  sits on the tip plate and takes 2 × M3 from below into inserts. The lead comes up the spring and the tip
+  plate's bore and goes into the display pocket through a 10 × 13 slot in the chin, big enough for a USB-C plug.
+  Nothing hangs behind the eye.
 - *Housing.* The bezel holds the glass against a 2.5 mm lip and has 4 ears with M3 inserts. Print it front face
-  down. The camera bump sits on the rim, 30° from the top toward the outside, clear of the glass: a Ø18 boss with a
-  10 × 10 mm head pocket (UNVERIFIED: spy-cam head size), a Ø7 lens hole, and a flex path back behind the display.
-  The eye back is a 2.5 mm cover plus the post that bolts to the stalk tip. The lead goes up the post and through
-  the cover. `EyeSpec` has the glass diameter, the stack depth (18 mm, UNVERIFIED), the camera angle, and the
-  camera head size.
-- *Mass at the tip:* bezel about 26 g and back about 57 g solid PETG (less with infill), plus the display
-  (weight UNVERIFIED, Waveshare doesn't list it; budget 80 g).
+  down; the chin prints straight up off the ring. The camera bump sits on the rim, 30° from the top toward the
+  outside, clear of the glass: a Ø18 boss with a 10 × 10 mm head pocket (UNVERIFIED: spy-cam head size), a Ø7
+  lens hole, and a flex path back behind the display. The eye back is a 2.5 mm cover that screws to the ears.
+  `EyeSpec` has the glass diameter, the stack depth (18 mm, UNVERIFIED), the camera angle, the camera head size,
+  and the chin.
+- *Mass at the tip:* bezel about 33 g and back about 36 g solid PETG (less with infill), tip plate 13 g, plus
+  the display (weight UNVERIFIED, Waveshare doesn't list it; budget 80 g). About 160 g in all.
 
 ## Body
 
-- **Drum:** two half-tubes split at the axis (236 × 150 × 118 each). The top half carries the two stalk pedestals,
-  which are tall enough (top at z = 117) that the Ø44 base plates clear the drum's crown. Both halves screw
-  radially into the end-cap rims (8 × M3 into inserts).
+- **Drum:** two half-tubes split at the axis (236 × 150 × 118 each). The top half carries the two stalk pedestals
+  on the crown at x = 0, y = ±48. Each is a Ø47 boss tilted 5° outward, with its top at z = 122 so the splayed
+  base plate clears the crown. Each pedestal has the Ø13 lead bore, three PTFE bores, and three M3 inserts. Both
+  halves screw radially into the end-cap rims (8 × M3 into inserts).
 - **End caps:** 8 mm discs inside the drum ends. Each has a 22 mm boss with two **6805-2RS** bearings (25 × 37 × 7)
   for the arm pivot, six vents, and inserts for the tray, the stalk pod, and the arm-servo mount.
 - **Arm drive:** Feetech **STS3250** → printed **2:1** spur pair (m2, 16:32 teeth, centre distance 48.5 including
@@ -157,7 +189,9 @@ It's a 3.4" round IPS, 800×800, 87.6 mm active area on a Ø115 outline, with it
   UNVERIFIED). Above it, an electronics shelf with the Teensy 4.1, the BNO085 within 20 mm of the drum axis,
   and the bus-servo adapter. The battery hangs low and forward in a sling under the tray. The MDD10A stands on
   the driver mount at the back. The 12 V and 5 V regulators and the charge module sit on the front of the tray.
-  The stalk servo pods are high and forward under the pedestals. The arm servos and gears sit next to the end caps.
+  The stalk servo pods (three servos each) sit forward against the end caps: centre x = 67, bottom z = −20.
+  They're 2.3 mm in front of the shelf, 8 mm below the arm gear, and 3.5–4.8 mm inside the drum wall. Their
+  PTFE tubes run up and back to the crown pedestals. The arm servos and gears sit next to the end caps.
 - **Skid:** a 4 mm PETG ski on the drum's back-bottom (UHMW tape on the running surface) with recesses for the
   three brass charge pads.
 
@@ -207,7 +241,8 @@ bot faces the room, and none of the charging hardware shows from the front (`bot
 - **Homing while reversing.** A 94 mm AprilTag 36h11 (printed and glued into a 1 mm recess) is on the tower's
   front face above the curve's rim, facing the bot. Its centre is 190 mm up the face and it spans z 134–223. An
   optional 5 mm 940 nm IR LED beacon sits beside it (y = 58). Why there:
-  - The stalks bend about 270°, so on the way in the eyes curl back over the drum and look down behind it. The
+  - The stalks bend back far enough (a 120° bend takes about 1.3 N·m at the pulley, under half a servo's stall)
+    that on the way in the eyes curl back over the drum and look down behind it. The
     face leans back 20° so it points up toward the eyes instead of across the floor, which keeps the tag from
     being foreshortened.
   - A 2D line-of-sight check against the drum in the balancing pose keeps the whole tag in view until the drum
@@ -244,7 +279,8 @@ come from the parts research draft, which isn't in the repo.
 | Pololu universal hub 6 mm | 1 pair | [Pololu 1083](https://www.pololu.com/product/1083) | $12.95 |
 | Cytron MDD10A | 1 | [Cytron](https://www.cytron.io/p-10amp-5v-30v-dc-motor-driver-2-channels) | 84.5 × 62 |
 | Feetech STS3250 12 V (arms) | 2 | [Feetech](https://www.feetechrc.com/en/562636.html) | through the printed 2:1 |
-| Feetech STS3215 12 V (stalks) | 4 | [Seeed](https://www.seeedstudio.com/STS3215-19kg-cm-7-4V-Serial-Servo-p-6338.html), RobotShop | 2 per stalk (tendon pairs) |
+| Feetech STS3215 12 V (stalks) | 6 | [Seeed](https://www.seeedstudio.com/STS3215-19kg-cm-7-4V-Serial-Servo-p-6338.html), RobotShop | 3 per stalk, one per tendon |
+| Music-wire compression spring, 3/4 in OD × 0.120 in wire, plain ends | 2 | McMaster 9657K-series or Lee Spring LC-series long stock (part number UNVERIFIED) | cut to 150 mm, ~9 mm pitch; the stalk spines |
 | Waveshare Bus Servo Adapter (A) | 1 | [Waveshare](https://www.waveshare.com/bus-servo-adapter-a.htm) | $4.99 |
 | Pololu D24V150F12 (12 V servo bus) | 1 | [Pololu 2885](https://www.pololu.com/product/2885) | $79.95 |
 | Pololu D36V50F5 (5 V logic) | 1 | [Pololu 4091](https://www.pololu.com/product/4091) | |
@@ -259,7 +295,7 @@ come from the parts research draft, which isn't in the repo.
 | Brass strip 0.8 × 12 mm | 150 mm | hobby/K&S | bot pads |
 | 6805-2RS bearings (25 × 37 × 7) | 4 | Amazon | arm pivots |
 | PowerPro Spectra 65 lb (0.41 mm) | 1 spool | [Tackle Warehouse](https://www.tacklewarehouse.com/Power_Pro_Spectra_Braided_Line_Moss_Green/descpage-PPSL.html) | tendons |
-| PTFE tube 2 × 4 mm | 1 m | Amazon | tendon guides, pod to base |
+| PTFE tube 2 × 4 mm | 1.5 m | Amazon | tendon guides, pod to base (6 runs) |
 | M3 × 5.7 heat-set inserts (ruthex) | 100 | [ruthex](https://www.ruthex.de/en/products/ruthex-gewindeeinsatz-m3-100-stuck-rx-m3x5-7-messing-gewindebuchsen) | Ø4.0 holes throughout |
 | M2.5 inserts, M3/M2.5/M2 screws | kit | Amazon | |
 | UHMW tape | 0.1 m | Amazon | skid running surface |
@@ -268,12 +304,13 @@ come from the parts research draft, which isn't in the repo.
 
 | Part | Qty | Material | Orientation (as exported) | Settings |
 |---|---|---|---|---|
-| stalk segment, base, tip | 14 / 2 / 2 | PETG | socket down, ball up | 0.2 mm, 4 walls, 40% gyroid, no supports |
-| fit sweep segments | 3 of each | PETG | same | same as segments |
-| tendon pulley | 4 | PETG | flat | 0.16 mm, 100% |
+| stalk base, tip | 2 / 2 | PETG | as modelled (plate down / collar down) | 0.16 mm, 4 walls, 40% gyroid; the coil groove prints as a thread, no supports |
+| stalk guide disc | 10 | PETG | flat | 0.16 mm, 100% |
+| stalk spring (only with `PRINTED_SPRING`) | 2 | PETG | upright | 0.2 mm, 100%, tree supports under the coils |
+| tendon pulley | 6 | PETG | flat | 0.16 mm, 100% |
 | servo pod | 2 | PETG | floor down | 0.2 mm, 3 walls, 25% |
-| eye bezel L/R | 1 + 1 | PETG (white) | front face down | 0.16 mm, 3 walls; tree supports under the ears only |
-| eye back | 2 | PETG (white) | post down | 0.2 mm, 3 walls, 20% |
+| eye bezel L/R | 1 + 1 | PETG (white) | front face down, chin up | 0.16 mm, 3 walls; tree supports under the ears only |
+| eye back | 2 | PETG (white) | flat | 0.2 mm, 3 walls, 20% |
 | drum upper / lower | 1 + 1 | PETG | rim down (open side on the bed) | 0.24 mm, 3 walls, 15% gyroid; pedestals need supports |
 | end cap L/R | 1 + 1 | PETG | flat, boss up | 0.24 mm, 4 walls around bearing bores, 20% |
 | arm inner/outer L/R | 4 | PETG | flat, diagonal | 0.2 mm, 4 walls, 25% |
@@ -288,18 +325,21 @@ Heat-set inserts go in at 230 °C after printing. The bearing bores are nominal 
 cap first and adjust `BEARING_FIT` in `params.py` to your printer.
 
 Fit report (`uv run python build.py`, current parameters): all 34 distinct printed parts fit. The largest are
-the drum halves (236 × 150 × 118), the end caps (229.6 × 229.6 × 22), the arms (210 × 210 diagonal), and the dock
+the drum halves (236 × 150 × 118, 124 for the upper with its pedestals), the end caps (229.6 × 229.6 × 22), the arms (210 × 210 diagonal), and the dock
 cradle (234 × 184 × 134) and tower (100 × 140 × 230), all against a 250 mm per-axis limit.
 
 ## Open questions
 
 1. **Display stack depth and weight** (Waveshare doesn't list them): measure, then set `EyeSpec.depth`. If the
-   eye comes out over about 170 g, drop to a 2.8" round or shorten the stalk.
+   eye comes out much over 160 g, the spring's margin shrinks (buckling at 6.2 N, about 630 g, but the sag grows
+   as 1 / (1 − W / 6.2 N)): go to a stiffer wire, or drop to a 2.8" round.
 2. **Camera path:** P4 CSI → USB video (one lead per stalk) vs. the IMX219 spy-cam flex to the Jetson's CSI
-   (a native driver, but a flat flex through 8 ball joints). Prototype one stalk both ways.
+   (a native driver, but a flat flex up a bending spring). Prototype one stalk both ways.
 3. **Measure before freezing:** STS3215/STS3250 mounting holes, horn pattern, and shaft offset; Jetson hole
-   pattern; Pololu hub PCD; spy-cam head size; pogo barrel and stroke; charge module size.
+   pattern; Pololu hub PCD; spy-cam head size; pogo barrel and stroke; charge module size; the stalk spring's OD, wire and pitch, and its
+   bending stiffness (hang a weight on the tip, measure the sag).
 4. **Arm clamshell screws** go through the arm's full thickness. If the arm flexes at 2.9 kg, add a rib or print
    the halves at 40% infill.
-5. **Sim update:** heavier eyes (about 170 g), the ball/socket spine (friction instead of springs), 4 tendons,
-   and the 21700 pack mass/placement should go into `sim/bot.py` before the controllers are retuned.
+5. **Sim update:** heavier eyes (about 160 g), the stiffer 3/4 in spring (EI 0.137 instead of 0.011), the
+   roots on the crown at y = ±48 with 5° of splay instead of 25° forward, and the 21700 pack mass/placement should
+   go into `sim/bot.py` before the controllers are retuned. The sim's three cables at 120° already match.
