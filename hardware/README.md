@@ -23,7 +23,8 @@ uv run python shots.py out/shots 3947 10    # ...through a second viewer on 3947
 
 It also prints the stalk spring's numbers (bending stiffness free and installed, axial rate, the preload, the
 tendon pull and winch torque for 90° and 120°, the buckling margin, how far a winch can bend it) and the winches'
-(encoder resolution, each PTFE tube's length and turning, and what the tube friction costs).
+(encoder resolution, each PTFE tube's length and turning, and what the tube friction costs), then the bot's mass and
+centre of mass and the filament each material takes.
 
 The build fails (exit 1) if any printed part's bounding box, in its print orientation, is bigger than 250 mm
 on any axis (256 mm less 3 mm margin each side).
@@ -33,6 +34,7 @@ on any axis (256 mm less 3 mm margin each side).
 | `mosfet_cad/params.py` | every driving dimension: character ratios, bought-part sizes, `SpringSpec`, `StalkSpec`, `EyeSpec`, `WormMotorSpec`, `CellSpec`, `PackSpec`, docked pose |
 | `mosfet_cad/stalk.py` | spring (installed, squeezed by the tendon preload), base plate, guide disc, tip plate |
 | `mosfet_cad/winch.py` | worm-gear winches: winch deck, back winch brackets, pulley, bench stand, PTFE tube runs |
+| `mosfet_cad/audio.py` | voice: speaker cup (on the deck), grille, mic array bosses and ports, speaker/amp/mic references |
 | `mosfet_cad/eye.py` | eye bezel with camera bump and chin, eye back cover |
 | `mosfet_cad/kit.py` | the spring-stalk test kit |
 | `mosfet_cad/body.py` | drum halves, end caps, tray, shelf, battery cradle, driver mount, skid, gears, arms, wheels |
@@ -52,15 +54,15 @@ proportion comes from `GEOMETRY` in `sim/bot.py`:
 | drum | Ø236 × 150 |
 | wheels | Ø172 × 73 (TPU tyre 8 mm on a Ø156 rim) |
 | arms | 184 pivot to axle, 80 wide, 36 thick; pivot 45 above the drum axis; parked 50° forward |
-| stalks | 159 long (base plate to tip top, installed), roots on the crown straight above the drum axis, 96 apart, splayed 5° outward |
+| stalks | 157 long (base plate to tip top, installed), roots on the crown straight above the drum axis, 96 apart, splayed 5° outward |
 | eyes | Ø124 bezel (Ø115 round display), camera bump on the rim; screen centre on the stalk axis, 68 above the tip |
-| overall, docked | 372 wide (tyre to tyre), 357 long, 529 tall; dock 285 × 184 |
+| overall, docked | 372 wide (tyre to tyre), 357 long, 527 tall; dock 285 × 184 |
 
 **Everything is on the centreline.** In side view the stalk roots, the stalk axes and the screen centres all
 lie in the x = 0 plane, straight above the drum and arm-pivot axis, mirror-symmetric about y = 0. The drawing's
 root spread (0.26 × 150 = 39 mm each side) would put two Ø120 eyes on top of each other, so the roots sit at
-y = ±48 (the Ø45 pedestals end at |y| 70.6, inside the drum's 75) and each stalk leans 5° outward, sideways only.
-The screen centres end up at y = ±67.7, 135 apart, with a 15.9 mm gap between the bezels. Gravity pulls a splayed
+y = ±48 (the Ø42 pedestals end at |y| 69, inside the drum's 75) and each stalk leans 5° outward, sideways only.
+The screen centres end up at y = ±67.6, 135 apart, with a 15.5 mm gap between the bezels. Gravity pulls a splayed
 stalk further out, so the gap only grows.
 
 Docked, the bot sits on its wheels (on the floor) and its skid (on the dock's 6 mm seat). The skid
@@ -75,52 +77,58 @@ from the common tangent of the wheel circle and the skid circle: 14.4°.
 `uv run python build.py --only kit`: one stalk (base plate, spring, 5 guide discs, tip plate), one eye, and a bench
 stand with three winches and their pulleys.
 
-**The spine is a compression spring.** It's McMaster **9662K33**: spring-steel cut-to-length stock, 36 in long,
-1.00 in OD × 0.135 in wire (Ø25.4 × 3.43, ID 18.5), open ends, 5.6 lbf/in over the whole 36 in. Cut 6 in (152.4 mm)
-per stalk. A cut piece is stiffer in proportion, 33.6 lbf/in (5.88 N/mm). From k = Gd⁴/(8D³n), with D = 21.97 mm
-and G = 79.3 GPa, the stock has 131.7 coils, so the pitch is 6.94 mm and a 6 in piece has 22 coils (`STEEL_SPRING`;
-E, G and the pitch are UNVERIFIED: measure the pitch and set it). With no tendon pulling, the spring holds the stalk
-straight up. Pulling one or two tendons bends it toward them. That's the same model as `sim/bot.py`, where the stalk
-is a springy segment chain with three cables through guide discs.
+**The spine is a compression spring.** It's McMaster **9657K321**: spring steel, 6 in (152.4 mm) free, 0.875 in OD ×
+0.120 in wire (Ø22.2 × 3.05, ID 16.1), **closed (not ground) ends**, 26 lbf/in (4.55 N/mm), 3.984 in long at its
+54 lb (240 N) max load; a pack of 6 is $17.30, three stalks' worth of spares. One spring per stalk, no cutting. From
+k = Gd⁴/(8D³n), with D = 19.18 mm and G = 79.3 GPa, it has 26.6 active coils, so the active pitch is 5.37 mm (a
+2.3 mm gap) and each closed end is one dead turn whose pitch is the wire (`STEEL_SPRING`; E, G and the pitch are
+UNVERIFIED: measure the pitch and set it). With no tendon pulling, the spring holds the stalk straight up. Pulling one
+or two tendons bends it toward them. That's the same model as `sim/bot.py`, where the stalk is a springy segment chain
+with three cables through guide discs.
 
-- **Only the free coils bend.** The collars grip 1.5 turns (10.4 mm) at each end and the five discs grip 4 mm each,
-  so 40.8 mm of the spring is held rigid and 111.6 mm bends and compresses. The installed spring is stiffer
-  than the cut piece: 8.04 N/mm axially. The bend numbers below use that free length. Counting the whole spring as
-  bending would undercount the moment by about a quarter.
-- **Stiffness.** EI = d⁴p / (32D(1/E + 1/2G)) = 0.123 N·m² free, 0.118 installed. EI goes with the pitch, and the
-  preload squeezes it (`StalkSpec.ei`; `build.py` prints both).
-- **Preload.** Each tendon is held at 10 N by its locked winch, so the spring carries 30 N at rest and is 3.7 mm
-  shorter: 148.7 mm, and the stalk 158.7 mm base to tip. The CAD models the stalk at that length
-  (`StalkSpec.installed_z`): the free coils squeeze and the gripped turns don't.
+- **Only the active coils bend.** The dead turns (6.2 mm at each end) are rigid, and the five discs grip 4 mm each,
+  so 32.4 mm of the spring is held and 120.0 mm bends and compresses. The installed spring is stiffer than the bare
+  one: 5.31 N/mm axially. The bend numbers below use that length.
+- **Stiffness.** EI = d⁴p / (32D(1/E + 1/2G)) = 0.068 N·m² free, 0.065 installed, 55% of the old 9662K33's 0.118. EI
+  goes with the pitch, and the preload squeezes it (`StalkSpec.ei`; `build.py` prints both).
+- **Preload.** Each tendon is held at 10 N by its locked winch, so the spring carries 30 N at rest and is 5.6 mm
+  shorter: 146.8 mm, and the stalk 156.8 mm base to tip. The CAD models the stalk at that length
+  (`StalkSpec.installed_z`): the active coils squeeze, the dead turns and gripped turns don't.
 - **The eyes don't sag.** The eye with its tip plate is about 165 g (UNVERIFIED), with its centre 72.8 mm above the
-  spring's top. A free spring would fold sideways under EI / (L_bend (L/2 + a)) = 7.46 N, 4.6× the eye's weight,
-  and the 5° splay would sag to 6.4°. But the winches can't be back-driven. With all three tendons locked, the
-  stalk can only bend by stretching a tendon. Spectra 65 lb is about 4.4 kN per unit strain (UNVERIFIED), which lets
-  the eye sag 0.22°. It only moves when a winch turns.
-- **Cost of a bend.** A 90° bend takes 1.73 N·m at the root: 97 N on the pulling tendon at r = 17.7 mm, plus 10 N
-  because the other two stay at their pretension. That's 107 N, or 1.07 N·m at the 10 mm pulley, under the winch's
-  rated 1.37 N·m. The pulling tendon takes in 27.8 mm for the bend and 12.1 mm more as the spring shortens, which is
-  1.2 s at 12 V. A 120° bend takes 140 N (1.40 N·m) and 1.7 s. The wire sees about 580 MPa at 120°, a third of what
-  spring steel takes.
-- **Reach.** At the rated torque (137 N) a winch bends the stalk 117°. At the driver's 1.6 A current limit (176 N,
-  61% of the Spectra's 289 N) it's 153°. Tube friction costs up to ×1.23 (see Winches), which makes that 93° and
-  123°. The coils wouldn't bind until 275°, so the winches set the limit.
-- **Collars and guide discs screw onto the coil.** Each has a helical groove cut by the spring itself plus
-  0.25 mm (`clearance`), so it threads on along the coil and stays put without glue. The five Ø41 guide discs (4 mm
-  thick, at 20.7, 48.4, 76.2, 104.0 and 131.7 mm up the free spring) sit 4 pitches (27.8 mm) apart, so they're one
-  part, printed 5 times per stalk. Each carries the three tendon holes on r = 17.7, 5 mm off the spring. Standing
-  the tendons off the spring is what gives them leverage.
-- **Cables.** The display lead runs up the middle of the spring (ID 18.5) and through Ø15 bores in the plates and
-  the pedestal. A stock USB-C plug threads through (≤ 13 mm wide, UNVERIFIED), so no slim overmold is needed.
-- **Printed spring instead.** `PRINTED_SPRING` is a PETG coil, Ø30 × 6 mm wire at 12 mm pitch. Swap it in
-  (`StalkSpec(spring=PRINTED_SPRING, pretension=...)`) and the collars, discs, plates and pedestal all resize from it.
-  A printed spring is modelled free, not squeezed, since its part is also its print file. PETG is about 100× softer
-  than steel, though. That coil's EI is 0.017 N·m² (UNVERIFIED: layer lines, creep), and it buckles under about
-  0.75 N, less than half the eye. It's for bench-testing the tendons and discs with a dummy eye, not for carrying
-  the display, and it needs a much lower pretension. Print it upright with tree supports under the coils.
+  spring's top. A free spring would fold sideways under EI / (L_bend (L/2 + a)) = 3.87 N, **2.4× the eye's weight**,
+  and the 5° splay would sag to 8.6°. That margin is thin, but it only applies with the tendons slack. The winches
+  can't be back-driven: with all three tendons locked, the stalk can only bend by stretching a tendon. Spectra 65 lb
+  is about 4.4 kN per unit strain (UNVERIFIED), which lets the eye sag 0.27°. It only moves when a winch turns.
+- **Cost of a bend.** A 90° bend takes 0.89 N·m at the root: 55 N on the pulling tendon at r = 16.1 mm, plus 10 N
+  because the other two stay at their pretension. That's 65 N, or 0.72 N·m at the r 11 pulley (0.88 N·m through the
+  worst tube), under the winch's rated 1.37 N·m. The pulling tendon takes in 25.3 mm for the bend and 10.4 mm more as
+  the spring shortens, which is **1.0 s at 12 V**, through the worst tube too. A 120° bend takes 83 N (0.92 N·m, 1.13
+  through the tube) and 1.3 s. The wire sees about 430 MPa at 120°, a quarter of what spring steel takes, and the
+  spring's axial load stays under 150 N even at the current limit, against its 240 N max.
+- **Reach.** Through the worst tube a winch bends the stalk 149° at its rated torque and 141° at the driver's 1.25 A
+  current limit (119 N on the tendon, 41% of the Spectra's 289 N). The coils wouldn't bind until 276°, so the
+  winches set the limit, and ±90° expressions use about 60% of it.
+- **Closed ends sit in seat cups.** A closed end's last turn sits on the next one, so nothing can screw onto it. The
+  base and tip plates each have a cup (Ø26.8 outside, 7.7 deep) whose floor is a helical ramp cut by the dead turn
+  itself plus 0.25 mm (`clearance`), stepped where the wire ends. The end drops in, sits square on the ramp, can't
+  turn one way against the step, and the cup's 2 mm wall centres it. The tendon preload keeps both ends pressed in;
+  a drop of epoxy in each cup is optional. Nothing in the cup grips an active coil, so it doesn't change the bend
+  (`_seat()` in `stalk.py`, `stalk_seat_section.png`).
+- **Guide discs screw onto the active coil.** Each has a helical groove cut by the spring itself plus 0.25 mm, so it
+  threads on along the 5.37 mm pitch (the 2.3 mm gap leaves a 1.8 mm web between the groove's passes) and stays
+  put without glue. The five Ø38.2 discs (4 mm thick, at 22.5, 49.4, 76.2, 103.0 and 129.9 mm up the free spring)
+  sit 5 pitches (26.8 mm) apart, so they're one part, printed 5 times per stalk. Each carries the three tendon holes
+  on r = 16.1, 5 mm off the spring. Standing the tendons off the spring is what gives them leverage.
+- **Cables.** The display lead runs up the middle of the spring (ID 16.1) and through Ø15 bores in the plates and
+  the pedestal. A stock USB-C plug threads through if its overmold is no more than about 13 × 6.5 (UNVERIFIED).
+- **Printed spring instead.** `PRINTED_SPRING` is a PETG coil, Ø30 × 6 mm wire at 12 mm pitch, closed ends like the
+  steel one. Swap it in (`StalkSpec(spring=PRINTED_SPRING, pretension=...)`) and the seat cups, discs, plates and
+  pedestal all resize from it. A printed spring is modelled free, not squeezed, since its part is also its print file.
+  PETG is about 100× softer than steel, though. It's for bench-testing the tendons and discs with a dummy eye, not
+  for carrying the display, and it needs a much lower pretension. Print it upright with tree supports under the coils.
 
 **Tendons: 3 at 120°, one winch each.** That's 3 worm-gear winches per stalk and 6 in all. A spring shortens when a
-tendon pulls it (12.1 mm at 90°, above), so an antagonistic pair on one double pulley would go slack on the far
+tendon pulls it (10.4 mm at 90°, above), so an antagonistic pair on one double pulley would go slack on the far
 side and give the stalk backlash every time it changed direction. Independent tendons stay taut, and three at 120°
 reach every bending direction. Four per stalk would over-constrain it: with every winch locked, four tendon lengths
 fix three unknowns (two bend angles and the spring's length), so any length error would fight the spring. Three
@@ -131,37 +139,71 @@ Tendons: 0.41 mm PowerPro Spectra (65 lb). Each passes through its pulley's cros
 tip they're knotted in Ø3 counterbores on the tip plate's top face. Between the winch and the stalk base they run
 in 2 × 4 mm PTFE tube, from a socket on the winch to the base plate's counterbores through the pedestal.
 
-**Base plate** (Ø45) bolts to its pedestal on the drum with 3 × M3 on Ø37 between the tendons (heat-set inserts in
-the pedestal); the heads clear the collar by 0.75 mm. **Tip plate** (Ø49) takes the eye's chin with 2 × M3 from
-below at (−12.4, ±14). Their heads sit beside the collar and screw into inserts in the chin.
+**Base plate** (Ø42.2) bolts to its pedestal on the drum with 3 × M3 on Ø34.2 between the tendons (heat-set inserts
+in the pedestal); the heads clear the seat cup by 0.95 mm. **Tip plate** (Ø46.2) takes the eye's chin with 2 × M3 from
+below at (−9.5, ±14). Their heads sit beside the cup and screw into inserts in the chin.
 
-**Try on the bench:** screw the discs on and thread the tendons. Hang the eye (or 165 g) on the tip with the tendons
-slack and check the sag against the numbers above. That's the real test of `SpringSpec.ei`. Then tension each
-tendon to 10 N and check the stalk shortens about 3.7 mm. Pull one with its winch and measure the pull, the
+**Try on the bench:** screw the discs on, drop the ends into their cups and thread the tendons. Hang the eye (or
+165 g) on the tip with the tendons slack and check the sag against the numbers above (8.6° from a 5° lean). That's
+the real test of `SpringSpec.ei`. Then tension each tendon to 10 N and check the stalk shortens about 5.6 mm. Pull one with its winch and measure the pull, the
 shortening, the time for 90°, and the current. Then cut the power mid-bend and check it holds.
 
 ## Winches
 
 Each tendon is wound by a 12 V worm gearmotor with a Hall encoder: **NFP-JGY-370-EN, 12 V, 337:1**
-([NFP listing](https://nfpshop.com/product/24mm-diameter-worm-gear-motor-model-nfp-jgy-370-en), also sold as
+([NFP listing](https://nfpshop.com/product/24mm-diameter-worm-gear-motor-model-nfp-jgy-370-en), $18.00, also sold as
 JGY-370 by ASLONG and others). At 12 V it runs 35 rpm and ≤ 0.25 A with no load, and 25 rpm at its rated 1.37 N·m and
 ≤ 1.3 A. It stalls at ≥ 3.4 N·m and ≤ 5.5 A. The worm is self-locking. The encoder is 11 PPR on the motor shaft,
-14,828 counts per output turn in quadrature, or 4.2 µm of tendon per count. At the 10 mm pulley, 1.37 N·m is 137 N.
-The 200:1 (42 rpm, 0.88 N·m) is too weak for a 90° bend through the tubes, and the 564:1 (15 rpm) takes over 2 s.
-Everything about it is UNVERIFIED (`WINCH_MOTOR` in `params.py`), including every dimension: gearbox 46 × 32 × 21.5,
-4 × M3 on 18 × 33 in the output face, D shaft Ø6 × 18.5 at 15 mm from the far end, Ø24.4 × 30.8 can, and an
-encoder guessed at Ø21.5 × 14. That's 91 mm long and about 200 g.
+14,828 counts per output turn in quadrature, or 4.7 µm of tendon per count at the r 11 pulley. Everything about it is
+UNVERIFIED (`WINCH_MOTOR` in `params.py`), including every dimension: gearbox 46 × 32 × 21.5, 4 × M3 on 18 × 33 in
+the output face, D shaft Ø6 × 18.5 at 15 mm from the far end, Ø24.4 × 30.8 can, and an encoder guessed at Ø21.5 × 14.
+That's 91 mm long and 200 g.
+
+**Why not an N20 worm motor.** The softer spring halves the pull (65 N for 90° instead of 107 N), but it doesn't cut
+the work: a 90° bend stores about 0.7 J in bending and 0.3 J in the spring's shortening, and with the pretension and
+the worst tube the pulley does about 1.6 J while taking in 36 mm. In 1 s that's 1.6 W average and about 3 W at the
+end of the stroke. A DC motor's best is a quarter of stall torque × no-load speed, and the micro worm gearboxes
+aren't close. Straight-line torque-speed from each 12 V listing, at the best pulley radius, through the worst tube
+(all UNVERIFIED):
+
+| motor (12 V, with encoder) | mass, price | no-load, rated, stall | 90° / 120° through the worst tube |
+|---|---|---|---|
+| NFP-WG1218S-N20-EN (N20 worm), 1030:1 | 15 g, $18.50 | 22 rpm, 0.12 N·m, ≥ 0.29 N·m | ≥ 9 s at twice its rated torque; can't hold 120° |
+| NFP-WG1218-050-EN (16 mm 050 worm), 236:1 | 25 g, $15.50 | 68 rpm, 0.064 N·m, gearbox max 0.29 N·m | 3.8 s / 6.1 s at 2.5× rated (r 2) |
+| NFP-GW180A-S (180 worm), 52 rpm | 100 g, $20, no encoder listed | 52 rpm, 0.18 N·m, 0.69 N·m | 1.8 s / 3.0 s at 3.6× rated torque |
+| **NFP-JGY-370-EN 337:1** | 200 g, $18 | 35 rpm, 1.37 N·m, ≥ 3.4 N·m | **1.0 s / 1.3 s at 64% of rated** (r 11) |
+
+The N20 and 050 worms top out at 0.2–0.4 W and 0.3 N·m, so they can't do it at any pulley size. The 180-size worm
+(the next size up, half the mass) gets to 1.8 s only by running at over three times its rated torque, with no
+stock encoder. So the 370 stays: it's the smallest self-locking worm motor with an encoder that makes 90° in about
+1 s with margin. What the new spring buys is margin: 64% of rated torque at 90° instead of 96%, and 149° of reach
+through the tubes instead of 93°.
+
+**Pulley radius, the torque/speed trade** (337:1, through the worst tube, `bend_time()` in `build.py`):
+
+| groove radius | 90° | 120° | torque at 90° / rated |
+|---|---|---|---|
+| 8 | 1.32 s | 1.80 s | 46% |
+| 10 | 1.08 s | 1.48 s | 58% |
+| **11** | **1.0 s** | **1.3 s** | **64%** |
+| 12 | 0.92 s | 1.27 s | 70% |
+| 14 | 0.81 s | 1.12 s | 81% |
+
+A bigger pulley is faster and pulls less. **r = 11** hits 1 s with a third of the rated torque spare, and a 1.25 A
+current limit still caps the tendon at 41% of the Spectra. (The 200:1 at r 6 does the same in 1.05 s at 54%; the
+337:1 keeps the lowest stall force per amp and the most self-locking margin.)
 
 - **Holding costs nothing.** The worm can't be back-driven, so a stopped winch holds its tendon with zero current.
-  The rest pose, any held bend, and the 10 N pretension all cost no power. (The STS3215s drew current to hold.)
+  The rest pose, any held bend, and the 10 N pretension all cost no power.
 - **Pretension.** Drive each tendon in at a low current limit until its encoder stops, then stop. The limit is the
   driver's VREF, set from a Teensy PWM through an RC filter. How repeatable that is against the worm's 0.25 A no-load
   current is UNVERIFIED, so check it with a spring scale on the kit.
-- **Pulley.** Single groove, radius 10, Ø25 flanges, 6 mm disc plus a 5 mm hub with an M3 thread-forming set screw
+- **Pulley.** Single groove, radius 11, Ø27 flanges, 6 mm disc plus a 5 mm hub with an M3 thread-forming set screw
   onto the shaft's flat. The disc sits 3 mm off the motor plate, clear of the M3 button heads. One part, fitted
   hub-out or hub-in so that neighbouring pulleys are staggered.
 
-**Why not a pod per stalk.** Six 370s don't fit as two three-motor pods. The motors are 91 mm long, which only fits
+**Why not a pod per stalk.** The motors didn't shrink, so the layout constraint didn't either: six 370s still don't
+fit as two three-motor pods. The motors are 91 mm long, which only fits
 across the drum (134 mm between the end caps). Lying across it, a motor passes through one arm gear's plane
 (|y| 44.5–52.5), so it has to stay out of that gear's Ø68 circle, which leaves the upper middle of the drum out. The
 front is limited by the charge module and the BMS (tops at z −21 and −27) below and by the shell. The back is taken
@@ -176,13 +218,18 @@ fore-aft over the arm servos. So each stalk has two winches on a shared deck in 
   both end caps through tabs on its top and bottom rails (2 × M3 each end). It holds two columns of motors, centred
   at z = −0.5 and 33.5. In each column the left stalk's motor is behind the plate, with its gearbox at +y and its
   shaft forward, and the right stalk's motor is in front, with its gearbox at −y and its shaft back. Each pulley
-  sits at its own motor's end (|y| 51), in the other layer's space where that layer has nothing. The deck is
+  sits at its own motor's end (|y| 51; the tendon leaves it at |y| 40 or 62), in the other layer's space where that
+  layer has nothing, 2.5 mm from the end cap. The deck is
   point-symmetric about its centre, so left and right are the same. These drive the front tendons: the lower motors
   pull the outer tendon (toward the end cap), the upper ones the inner tendon. The rear layer's backs are 4.5 mm
   from the arm gears, and the top rail 2.8. The bottom rail is 1.0 mm over the charge module and 7 mm over the BMS.
   The far ends of the gearboxes are 1 mm from the end caps, and the front layer's cans 1 mm from the driver plate.
-- **Driver plate** (the deck's front wall, x 88–91). The three motor driver carriers mount on its front on M2.5
-  standoffs, 10.5 mm inside the shell.
+  The top rail's end-cap tabs sit at x 42 (they were at 50) to clear the right-hand lower tube.
+- **Top rail** carries the three motor driver carriers flat on 3 mm M2.5 standoffs (see Motor drivers): 5.9 mm
+  under the shell, 6.5 mm from the nearest tube and the upper motors.
+- **Driver plate** (the deck's front wall, x 88–91) is the speaker's back wall. The speaker cup stands on its front
+  (x 91 to the shell, |y| ≤ 22.5, z −17.5 to 27.5), 3.5 mm over the charge module; the speaker's magnet is 4.5 mm
+  from the nearest winch (see Voice).
 - **Back winches** (1 per stalk, `back_bracket()`). Each motor lies fore-aft at z = 62 over its arm servo, with the
   gearbox at the back (far end at x −80.5, 2.9 mm inside the shell) and the can and encoder reaching forward to
   x +10 under the pedestal. The output face is at |y| 36, and the shaft points outward to a pulley at |y| 46, right
@@ -195,21 +242,32 @@ fore-aft over the arm servos. So each stalk has two winches on a shared deck in 
 - **PTFE tubes** (`tube_runs()`, modelled and clash-checked). A front tube rises out of the deck's top rail to z 68,
   runs back and up to z 74 under its pedestal hole, and turns up into it. A back tube leaves its socket forward at
   z 72 and turns up into the pedestal. Every bend is 15 mm radius (UNVERIFIED: check the tube doesn't kink). The
-  front tubes are 98–122 mm long and turn 165–171°. The back ones are 74 mm and turn 96°. The capstan loss is
+  front tubes are 98–122 mm long and turn 165–171°. The back ones are 74 mm and turn 95°. The capstan loss is
   e^(μθ): with Spectra on PTFE at μ ≈ 0.07 (UNVERIFIED), that's ×1.22–1.23 in front and ×1.12 at the back.
-  Through the worst tube a 90° bend takes 1.32 N·m at the pulley (still under the rated 1.37) and 1.3 s. The
-  nearest things are the end cap (2.3 mm from a front tube), the arm gear (2.4 from a back tube), and the back
-  winch's encoder (7.2).
+  Through the worst tube a 90° bend takes 0.88 N·m at the pulley (64% of the rated 1.37) and 1.0 s. The front
+  tubes' turning is set by the deck: they leave the top rail straight up and have to end pointing up into the
+  pedestal, so each makes a half turn whatever the bend radius. Only moving the front winches up to the crown
+  would cut it, and there's no room there. The nearest things are the end cap (3.0 mm from a front tube), the arm
+  gear (2.3 from a back tube), and the driver carriers (6.5).
 
 **Motor drivers: 3 × Pololu TB67H420FTG dual carrier**
-([Pololu 2999](https://www.pololu.com/product/2999), $12.95, 30 × 25 mm). Each gives two channels at 10–47 V,
-1.7 A continuous and 4.5 A peak, with a hardware current limit per channel of I = 1.25 × VREF. Set VREF to 1.28 V for
-a **1.6 A limit**. That covers the rated 1.3 A, and the chopper holds a stall there instead of at the motor's
-≤ 5.5 A. The TB6612FNG (1.2 A continuous, 3.2 A peak) is too small for the stall. A DRV8871 has the current limit
-but only one channel. The MC33926 dual has current feedback, but its fixed internal limit is above the stall, so a
-firmware fault could stall at 5.5 A, which is ≥ 3.4 N·m, or 340 N on a tendon rated 289 N. Here the limit is
-hardware. At 1.6 A a winch pulls at most 176 N, 61% of the Spectra. The trade is that the TB67H420 has no current
-output, so the Teensy doesn't read tendon tension directly. It infers it from the spring model and the encoders.
+([Pololu 2999](https://www.pololu.com/product/2999), $12.95, 25 × 30 mm), kept. Each gives two channels at 10–47 V,
+1.7 A continuous and 4.5 A peak, with a hardware current limit per channel of I = 1.25 × VREF. Set VREF to 1.00 V for
+a **1.25 A limit** (was 1.6 A). A 90° bend through the worst tube draws 0.93 A and a 120° one 1.1 A, and the chopper
+holds a stall at 1.25 A instead of the motor's ≤ 5.5 A. At the r 11 pulley that caps a tendon at **119 N, 41% of the
+Spectra's 289 N**, in hardware: a firmware fault can't stall a winch at 5.5 A (≥ 3.4 N·m, 310 N). The motor didn't
+change, so its stall current didn't either, and the cheaper dual bridges don't fit it:
+
+- DRV8833 (Pololu 2130, $5.95 for two channels): 2.7–10.8 V. The winches run off the 16.8 V pack, and the motors
+  are 12 V, so it's out. Its current limit also needs sense resistors the carrier doesn't have.
+- TB6612FNG: 15 V max and no current limit; 1.2 A continuous.
+- DRV8847 (18 V, 1 A per bridge): under the 1.1 A a 120° bend draws.
+- DRV8874 / DRV8876 single carriers ($9–10 a channel): current limiting and a current-sense output, but one channel
+  each, so 6 boards and about $57 against $39.
+
+At $6.48 a channel the TB67H420 is the cheapest carrier here with a hardware current limit that runs off the pack,
+so the driver cost doesn't change. The trade is still that it has no current output, so the Teensy infers tendon
+tension from the spring model and the encoders.
 
 - **Power.** The drivers run straight off the pack (12–16.8 V, after the BMS), with the PWM duty capped so the
   motors see 12 V at most. That keeps them off the 12 V servo regulator, which now feeds only the two arm servos.
@@ -218,6 +276,9 @@ output, so the Teensy doesn't read tendon tension directly. It infers it from th
   about 49 of the Teensy's 55 with the wheel encoders, MDD10A, servo bus, BMS UART, I²C and ADCs. The Teensy has four
   hardware quadrature decoders. Give them the two wheels and two winches, and count the other four winches on pin
   interrupts. At 35 rpm that's 8.6 k edges/s per winch.
+- **Where they sit.** The three carriers now lie flat on the winch deck's top rail on M2.5 standoffs, parts up: two
+  side by side in front (x 65–90) and one behind them on the centreline (x 38–64), all inside |y| 31.5, so the PTFE
+  tubes (|y| ≥ 38) rise clear. The driver plate they used to hang on is now the speaker's back wall (see Voice).
 
 ## Eyes
 
@@ -254,10 +315,54 @@ It's a 3.4" round IPS, 800×800, 87.6 mm active area on a Ø115 outline, with it
 - *Mass at the tip:* bezel about 33 g and back about 36 g solid PETG (less with infill), tip plate 17 g, plus
   the display (weight UNVERIFIED, Waveshare doesn't list it; budget 80 g). About 165 g in all (`EYE_KG`).
 
+## Voice
+
+The bot talks through a speaker in the front of the drum and listens through a two-mic array under the crown, with
+echo cancellation so it hears people while it talks (`audio.py`).
+
+**Chain: Jetson → USB → Seeed reSpeaker Lite → 3.5 mm → PAM8302A → speaker.**
+
+- **[Seeed reSpeaker Lite](https://www.seeedstudio.com/ReSpeaker-Lite-p-5928.html)** ($24.90): XMOS XU316, two MEMS
+  mics, 35 × 86 mm, USB Audio Class 2 (no driver on the Jetson), with acoustic echo cancellation, interference
+  cancellation, noise suppression and AGC on board; far-field to about 3 m, 16 kHz. It's the Jetson's one sound card,
+  capture and playback both, so what it cancels is exactly what it plays: the echo reference can't drift. It runs off
+  USB 5 V (or external 5 V). *Why not the 4-mic XVF3800:* it's a Ø100 board with its mics on a 66 mm square. It has
+  better beamforming and direction of arrival, but there's no flat Ø100 patch inside the drum near the shell: the
+  pedestals, the tube runs and the back winches are all in the way.
+- **[Adafruit PAM8302A](https://www.adafruit.com/product/2130)** ($3.95): 2.5 W mono class-D into 4 Ω off 5 V,
+  analog in from the array's 3.5 mm headphone out, 17.8 × 20.3 mm, stuck to the side of the speaker box. The Lite's
+  own speaker connector is listed as "supports 5 W amplifier speakers"; whether that's an amplified output is
+  UNVERIFIED, so the design doesn't rely on it. If it is, leave the PAM8302A out. An I²S amp straight off the Jetson
+  (MAX98357A) would take the playback path away from the array, and then the echo canceller needs a loopback reference
+  that has to stay in sync. Keeping playback on the array avoids that.
+- **Speaker: [Adafruit 3968](https://www.adafruit.com/product/3968)**, 40 mm, 4 Ω, 3 W (5 W since the 2024 cone),
+  $1.95. Its shape is UNVERIFIED: modelled as a Ø40 × 3 flange and a Ø29 magnet, 19.5 deep.
+
+**Speaker placement.** On the centreline (y = 0), horizontal, axis at z = +5, firing forward through a grille in the
+front of the drum: the face's side. The winch deck's driver plate (x 88–91) is its back wall. A printed cup on the
+plate's front, part of the deck, runs forward to the shell (Ø45 outside, 41 × 41 inside) and the speaker drops in
+from the front onto a ledge ring. Its flange face is at x 111, 1.2 mm inside the shell at the flange's top edge, and
+a 2 mm foam ring seals it to the shell. The sealed back volume is about 15 cm³ round the magnet (fine for voice: a 40 mm driver has
+nothing below about 200 Hz anyway). The grille is a hex pattern of Ø2.4 holes on a 4 mm pitch within r 15 of the
+axis, through both drum halves (the split is at z = 0). It's on the front, a quarter turn from the skid and the pads
+on the back-bottom, and the dock is behind the bot, so nothing covers it when docked.
+
+**Mic placement.** The reSpeaker Lite lies against the inside of the upper shell, 65° up the front, long side along
+the drum axis, mics toward the shell. Its mic-side face is 109 mm from the axis (6 mm inside the shell at its centre)
+on four Ø6 bosses moulded into the drum upper, with M2 screws. Two Ø1.6 ports through the shell sit over the mics
+(board positions ±32 mm along the long side: UNVERIFIED, measure and set `MIC_PORTS`), with a foam gasket round each
+so the mics hear the room, not the inside of the drum. It sits in front of the stalk pedestals and above the winch
+deck's tubes and driver carriers, 115 mm from the speaker, and faces up and forward, away from it. The winches are
+right under it, but they only run during an expression, and the array's noise suppression takes the rest. Its USB
+lead runs back over the deck to the Jetson.
+
+**Power.** Both run off the 5 V logic regulator (D36V50F5, 5 A): the array about 0.1 A (UNVERIFIED), the amp up to
+0.7 A at full volume and about 0.1 A average while talking. That's under 0.5 W on average against the pack.
+
 ## Body
 
 - **Drum:** two half-tubes split at the axis (236 × 150 × 118 each). The top half carries the two stalk pedestals
-  on the crown at x = 0, y = ±48. Each is a Ø45 boss tilted 5° outward, with its top at z = 122 so the splayed
+  on the crown at x = 0, y = ±48. Each is a Ø42 boss tilted 5° outward, with its top at z = 122 so the splayed
   base plate clears the crown. Each pedestal has the Ø16 lead bore, three PTFE bores, and three M3 inserts. Both
   halves screw radially into the end-cap rims (8 × M3 into inserts).
 - **End caps:** 8 mm discs inside the drum ends. Each has a 22 mm boss with two **6805-2RS** bearings (25 × 37 × 7)
@@ -282,7 +387,9 @@ It's a 3.4" round IPS, 800×800, 87.6 mm active area on a Ø115 outline, with it
   Jetson board. It carries the Teensy 4.1 and the BNO085, 14 mm from the drum axis. The driver mount is an upright
   plate behind the Jetson, bolted to both end caps. The MDD10A hangs on its back and the bus-servo adapter on its
   front. The winch deck stands across the front of the drum over the BMS and the charge module (x 36–91, z −20 to
-  53), with four winches and the three motor drivers on it. The back winches lie fore-aft over the arm servos
+  53), with four winches on it and the three motor drivers lying on its top rail. The speaker's back box stands on
+  the deck's front plate, on the centreline at z −18 to 28, firing through the grille, and the mic array lies
+  under the shell above it, 65° up the front (see Voice). The back winches lie fore-aft over the arm servos
   (z 46–78). Their PTFE tubes run up and back to the crown pedestals (see Winches). The arm servos and gears sit next
   to the end caps. Each arm servo mount's lower post is behind the servo (x −58), clear of the heatsink and the
   shelf.
@@ -325,10 +432,10 @@ lying low in the drum in a printed cradle (`PackSpec` in `params.py`, `cradle()`
   Batteries).
 - **BMS: 4S Li-ion, ≥ 40 A continuous, with balancing.** For example a Daly 4S 40 A, or a JBD/Overkill 4S smart
   BMS so the Teensy can read state of charge over UART. It sits on the tray (60 × 40 × 12 envelope, UNVERIFIED).
-  The worst case is about 33 A: both wheel motors stalled at 16.8 V (2 × 7.7 A), all six winches at their 1.6 A
-  current limit straight off the pack (9.6 A), both arm servos stalled through the D24V150F12 (2 × 4.2 A at 12 V,
-  UNVERIFIED, about 6.4 A from the pack), and the Jetson (25 W, 1.7 A). That's 5.5 A per cell, 1.1 C against a
-  25 A rating. Before, with eight servos on the regulator, it was about 30 A. In use no more than four winches pull
+  The worst case is about 31 A: both wheel motors stalled at 16.8 V (2 × 7.7 A), all six winches at their 1.25 A
+  current limit straight off the pack (7.5 A; 9.6 A at the old 1.6 A limit), both arm servos stalled through the
+  D24V150F12 (2 × 4.2 A at 12 V, UNVERIFIED, about 6.4 A from the pack), the Jetson (25 W, 1.7 A), and the speaker
+  amp flat out (0.7 A at 5 V, 0.25 A from the pack). That's 5.2 A per cell, 1.0 C against a 25 A rating. In use no more than four winches pull
   at once, two per stalk, and a held pose draws nothing: the worm winches hold with zero current. Normal driving
   draws 1.7 A.
 - **Cradle.** A curved trough that sits on the shell, open upward, with a stepped pocket for each layer (0.8 mm over
@@ -342,7 +449,7 @@ lying low in the drum in a printed cradle (`PackSpec` in `params.py`, `cradle()`
   | | draw | 4S6P, 432 Wh | 4S2P, 173 Wh |
   |---|---|---|---|
   | idle (docked or sitting, Jetson idle) | ~3 W | 130 h (5.4 days) | 52 h |
-  | awake (looking, talking, eyes on) | ~12 W | 32 h | 13 h |
+  | awake (looking, talking, eyes on; mic array and speaker about 0.5 W of it) | ~12.5 W | 31 h | 12.5 h |
   | driving (balancing and rolling) | ~25 W | 16 h | 6.2 h |
 
 - **Shipping.** 432 Wh is over the 100 Wh and 160 Wh airline limits. The bot can't fly with the pack in it, and a
@@ -350,32 +457,32 @@ lying low in the drum in a printed cradle (`PackSpec` in `params.py`, `cradle()`
 
 ## Mass and balance
 
-These are estimates from the CAD volumes (PETG at the print table's infill), the pack, and bought-part masses. The
-bought parts are all UNVERIFIED: Jetson 200 g, 37D motor 195 g, STS3250 70 g, display 80 g, worm winch 200 g,
-STS3215 55 g, and 300 g of wiring and fasteners. The last column is the second plus the difference, by CAD volume,
-of the parts the winches changed.
+These are estimates from the CAD volumes and bought-part masses, from `build.py`'s mass report: each printed part at
+its print settings (walls solid, the rest at the infill; see Filament), each bought part at a listed or guessed mass
+(all UNVERIFIED: Jetson 200 g, 37D motor 195 g, STS3250 70 g, display 80 g, worm winch 200 g, speaker 25 g, mic array
+15 g), the springs from their wire volume, and 300 g of wiring and fasteners on the drum axis. That report re-weighs
+the previous revision (the same winches with the 9662K33 spring) at 7.64 kg, not the 7.29 kg estimated by hand
+before, so the columns below compare like with like.
 
-| | 4S2P 12 Ah in the old sling | 4S6P, stalk servos | 4S6P, worm winches (now) |
+| | 4S6P, stalk servos | 4S6P, worm winches, 9662K33 (report) | 4S6P, worm winches, 9657K321, voice (now) |
 |---|---|---|---|
-| total | 4.97 kg | 6.26 kg | **7.29 kg** |
-| body (drum, internals, stalks, eyes) | 3.40 kg | 4.70 kg | 5.73 kg |
-| body CoM, drum frame (x, z) | 7.3, +12.9 | 4.6, −6.7 | 5.7, +6.2 |
-| whole-bot CoM, docked pose, drum frame (x, y, z) | 42.9, 0.1, −8.8 | 33.5, −0.3, −19.0 | 30.3, −0.3, −7.2 |
+| total | 6.26 kg | 7.64 kg | **7.66 kg** |
+| body (drum, internals, stalks, eyes) | 4.70 kg | 5.98 kg | 6.00 kg |
+| body CoM, drum frame (x, z) | 4.6, −6.7 | 6.4, +10.8 | 7.1, +9.8 |
+| whole-bot CoM, docked pose, drum frame (x, y, z) | 33.5, −0.3, −19.0 | 30.7, −0.1, −3.3 | 31.2, −0.1, −4.1 |
 
-The pack pulls the body's centre of mass down 20 mm, to below the drum axis, and 2.7 mm back. It can't go further
-forward, because the middle layer spans the whole chord. The winches add 1.03 kg. The six motors weigh 1.2 kg
-against 0.33 kg of STS3215s, and the bigger springs add 0.12 kg. That lifts the body's centre of mass 13 mm, back
-above the axis. Four of the motors sit low in front, and the two back ones sit at z 62.
+This pass is **22 g heavier**, not lighter: the winch motors are the same 1.2 kg (no smaller worm motor does the job,
+see Winches). The springs save 17 g and the smaller stalk parts 18 g; the speaker cup adds 11 g to the deck and the
+voice parts 42 g, forward and up. The body's centre of mass moves 0.7 mm forward and 1 mm down.
 
 - **Standing up.** In the worst case the whole body hangs on the arm pivots, with the arms at 50° and the wheels
-  rolling freely: 5.73 kg × g × 184 sin 50° = 7.9 N·m. That's 3.96 N·m per arm and 1.98 N·m at each STS3250
-  through the 2:1 (1.62 with the stalk servos, 1.18 with the old pack), 40% of its ≈ 4.9 N·m stall (50 kg·cm at
+  rolling freely: 6.00 kg × g × 184 sin 50° = 8.3 N·m. That's 4.15 N·m per arm and 2.07 N·m at each STS3250
+  through the 2:1 (1.62 with the stalk servos, 1.18 with the old pack), 42% of its ≈ 4.9 N·m stall (50 kg·cm at
   12 V, UNVERIFIED). Driving the wheels back under the body takes some of that.
-- **Balancing.** With the arms straight down, the body's CoM is 145 mm over the axle (132 with the stalk servos,
-  152 with the old pack). Holding a 5° lean takes 0.36 N·m per wheel motor. The 37D 50:1 stalls at 2.06 N·m at
-  12 V, and Pololu suggests keeping continuous loads under about 1 N·m (UNVERIFIED). At 1 N·m each the motors hold a
-  14° static lean (19° before), or accelerate the whole bot at 3.2 m/s² (3.7 before), enough to recover about 18°.
-  √(h/g) is 122 ms (116 ms before), so retune the balance loop for the new mass and height.
+- **Balancing.** With the arms straight down, the body's CoM is 149 mm over the axle (132 with the stalk servos).
+  Holding a 5° lean takes 0.38 N·m per wheel motor. The 37D 50:1 stalls at 2.06 N·m at 12 V, and Pololu suggests
+  keeping continuous loads under about 1 N·m (UNVERIFIED). At 1 N·m each the motors hold a 13° static lean, or
+  accelerate the whole bot at 3.0 m/s². √(h/g) is 123 ms, so retune the balance loop for the new mass and height.
 - **Docked.** The centre of mass is 31 mm ahead of the skid contact and the wheels are 153 mm ahead, so the wheels
   carry 20% (15 N) and the skid 80% (24% and 76% with the stalk servos). The pads press on the pins harder. The dock
   geometry and `docked_pose` don't change.
@@ -466,9 +573,13 @@ come from the parts research draft, which isn't in the repo.
 | Pololu universal hub 6 mm | 1 pair | [Pololu 1083](https://www.pololu.com/product/1083) | $12.95 |
 | Cytron MDD10A | 1 | [Cytron](https://www.cytron.io/p-10amp-5v-30v-dc-motor-driver-2-channels) | 84.5 × 62 |
 | Feetech STS3250 12 V (arms) | 2 | [Feetech](https://www.feetechrc.com/en/562636.html) | through the printed 2:1 |
-| NFP-JGY-370-EN worm gearmotor, 12 V, 337:1, Hall encoder | 6 | [NFP](https://nfpshop.com/product/24mm-diameter-worm-gear-motor-model-nfp-jgy-370-en) (price UNVERIFIED); JGY-370 12 V 30–35 rpm with encoder from ASLONG and others | the tendon winches, 3 per stalk; 1.37 N·m rated, self-locking; dimensions UNVERIFIED |
-| Pololu TB67H420FTG dual motor driver carrier | 3 | [Pololu 2999](https://www.pololu.com/product/2999) | $12.95; 2 winches each, 1.7 A continuous per channel, current limit set to 1.6 A (VREF 1.28 V) |
-| McMaster 9662K33 spring-steel cut-to-length compression spring, 1.00 in OD × 0.135 in wire, 36 in | 1 | [McMaster](https://www.mcmaster.com/9662K33/) (price UNVERIFIED) | cut two 6 in (152.4 mm) pieces, open ends; the stalk spines |
+| NFP-JGY-370-EN worm gearmotor, 12 V, 337:1, Hall encoder | 6 | [NFP](https://nfpshop.com/product/24mm-diameter-worm-gear-motor-model-nfp-jgy-370-en), $18.00; JGY-370 12 V 30–35 rpm with encoder from ASLONG and others | the tendon winches, 3 per stalk; 1.37 N·m rated, self-locking; dimensions UNVERIFIED |
+| Pololu TB67H420FTG dual motor driver carrier | 3 | [Pololu 2999](https://www.pololu.com/product/2999) | $12.95; 2 winches each, 1.7 A continuous per channel, current limit set to 1.25 A (VREF 1.00 V) |
+| McMaster 9657K321 compression spring, spring steel, 0.875 in OD × 0.120 in wire × 6 in, closed ends, 26 lbf/in | 1 pack of 6 | [McMaster](https://www.mcmaster.com/9657K321/), $17.30 | one per stalk, uncut; 4 spares |
+| Seeed reSpeaker Lite (XU316, 2 mics, AEC, USB) | 1 | [Seeed 5928](https://www.seeedstudio.com/ReSpeaker-Lite-p-5928.html), $24.90 | mic array and sound card; 35 × 86, hole and mic positions UNVERIFIED |
+| Adafruit PAM8302A 2.5 W class-D amp | 1 | [Adafruit 2130](https://www.adafruit.com/product/2130), $3.95 | from the array's 3.5 mm out; leave out if the array's speaker output is amplified |
+| Adafruit speaker, 40 mm, 4 Ω, 3 W | 1 | [Adafruit 3968](https://www.adafruit.com/product/3968), $1.95 | front grille; shape UNVERIFIED |
+| 3.5 mm plug to bare wires (short), 2 mm foam sheet | 1 / 50 × 50 mm | generic | amp input; speaker and mic gaskets |
 | Waveshare Bus Servo Adapter (A) | 1 | [Waveshare](https://www.waveshare.com/bus-servo-adapter-a.htm) | $4.99; the two arm servos |
 | Pololu D24V150F12 (12 V servo bus) | 1 | [Pololu 2885](https://www.pololu.com/product/2885) | $79.95; the two arm servos (the winches run off the pack) |
 | Pololu D36V50F5 (5 V logic) | 1 | [Pololu 4091](https://www.pololu.com/product/4091) | |
@@ -487,24 +598,43 @@ come from the parts research draft, which isn't in the repo.
 | 6805-2RS bearings (25 × 37 × 7) | 4 | Amazon | arm pivots |
 | PowerPro Spectra 65 lb (0.41 mm) | 1 spool | [Tackle Warehouse](https://www.tacklewarehouse.com/Power_Pro_Spectra_Braided_Line_Moss_Green/descpage-PPSL.html) | tendons |
 | PTFE tube 2 × 4 mm | 1.5 m | Amazon | tendon guides, winch to pedestal (6 runs, 0.6 m in all, plus the kit's) |
+| Bambu Lab PETG Basic, black, 1.75 mm, 1 kg | 5 | [Bambu Lab](https://us.store.bambulab.com/products/petg-basic), about $20 a spool (price UNVERIFIED; PETG HF is being discontinued, $35.99 at MatterHackers) | every printed part except the tyres: 3.57 kg (bot 2.65, dock 0.76, stalk kit 0.17), 4.29 kg with 20% for waste and supports |
+| Bambu Lab TPU 95A HF, black, 1.75 mm, 1 kg | 1 | [MatterHackers](https://www.matterhackers.com/store/l/bambu-lab-tpu-hf-filament-175mm-1kg/sk/MRXC3F21), $55.99 | the two tyres: 0.35 kg, 0.42 kg with 20% |
 | M3 × 5.7 heat-set inserts (ruthex) | 100 | [ruthex](https://www.ruthex.de/en/products/ruthex-gewindeeinsatz-m3-100-stuck-rx-m3x5-7-messing-gewindebuchsen) | Ø4.0 holes throughout |
-| M2.5 inserts, M3/M2.5/M2 screws, M3 button heads, M3 × 4 set screws | kit | Amazon | button heads (24) under the winch pulleys; set screws (9) in the pulley hubs |
+| M2.5 inserts, M3/M2.5/M2 screws, M3 button heads, M3 × 4 set screws | kit | Amazon | button heads (24) under the winch pulleys; set screws (9) in the pulley hubs; 12 M2.5 standoffs (3 mm) for the driver carriers; 4 M2 × 6 thread-forming for the mic array |
 | UHMW tape | 0.1 m | Amazon | skid running surface |
+
+**Priced so far: about $761**, the rows above with a listed price (eyes at $70 each, the cameras, wheel motors and
+hub, winch motors and drivers, springs, voice parts, servo adapter, 12 V regulator and filament). It leaves out the
+Jetson, Teensy, IMU, MDD10A, arm servos, 5 V regulator, cells, BMS, charger, bearings and the small parts, which have
+no price here yet. This revision's changes: the 9657K321 pack is $17.30 (the 9662K33 stock it replaces had no price
+here); motors ($108) and drivers ($38.85) don't change; voice adds $30.80 plus a few dollars of foam and a 3.5 mm
+lead; filament is $156 (5 × ~$20 PETG, UNVERIFIED, plus $55.99 TPU).
+
+**Filament** (`build.py` prints it): grams per part from its CAD volume, with every surface's walls solid (3 or 4
+lines of 0.42 mm, as in the table below) and the rest at the listed infill, at 1.27 g/cm³ for PETG and 1.21 for TPU.
+Per bot, dock and stalk test kit, with the drum halves, winch deck and eyes each printed once: black PETG 2.65 +
+0.76 + 0.17 = 3.57 kg, and black TPU 0.35 kg for the tyres. With 20% for supports, purges, brims and a failed print
+or two, that's 4.3 kg of PETG, **5 spools**, and 0.42 kg of TPU, **1 spool**. The fill model is UNVERIFIED: check it
+against Bambu Studio's estimate for the drum halves, which are about a tenth of the PETG.
 
 ## Print settings (Bambu X1)
 
+**Everything prints in black**: black PETG for every part below except the tyres, which are black TPU 95A. The
+materials column says which. How much filament that takes is in the BOM and under Filament, below.
+
 | Part | Qty | Material | Orientation (as exported) | Settings |
 |---|---|---|---|---|
-| stalk base, tip | 2 / 2 | PETG | as modelled (plate down / collar down) | 0.16 mm, 4 walls, 40% gyroid; the coil groove prints as a thread, no supports |
+| stalk base, tip | 2 / 2 | PETG | as modelled (plate down / cup down) | 0.16 mm, 4 walls, 40% gyroid; the seat cup's helical floor prints as a ramp, no supports |
 | stalk guide disc | 10 | PETG | flat | 0.16 mm, 100% |
 | stalk spring (only with `PRINTED_SPRING`) | 2 | PETG | upright | 0.2 mm, 100%, tree supports under the coils |
 | winch pulley | 6 (+ 3 for the kit) | PETG | flat, disc down | 0.16 mm, 100% |
-| winch deck | 1 | PETG | on its end (as exported) | 0.2 mm, 4 walls, 25%; every wall stands up, no supports |
+| winch deck | 1 | PETG | on its end (as exported) | 0.2 mm, 4 walls, 25%; the plates stand up; the speaker cup's upper side wall bridges 20 mm, and its ledge ring needs supports |
 | back winch bracket L/R | 1 + 1 | PETG | plate down | 0.2 mm, 4 walls, 25%; supports under the tube socket |
 | bench winch stand (kit only) | 1 | PETG | foot down | 0.2 mm, 3 walls, 20% |
 | eye bezel L/R | 1 + 1 | PETG (white) | front face down, chin up | 0.16 mm, 3 walls; tree supports under the ears only |
 | eye back | 2 | PETG (white) | flat | 0.2 mm, 3 walls, 20% |
-| drum upper / lower | 1 + 1 | PETG | rim down (open side on the bed) | 0.24 mm, 3 walls, 15% gyroid; pedestals need supports |
+| drum upper / lower | 1 + 1 | PETG | rim down (open side on the bed) | 0.24 mm, 3 walls, 15% gyroid; pedestals and the mic bosses need supports; keep supports out of the grille and mic ports |
 | end cap L/R | 1 + 1 | PETG | flat, boss up | 0.24 mm, 4 walls around bearing bores, 20% |
 | arm inner/outer L/R | 4 | PETG | flat, diagonal | 0.2 mm, 4 walls, 25% |
 | arm gear / pinion | 2 + 2 | PETG or PA-CF | flat | 0.12 mm, 100% |
@@ -520,26 +650,30 @@ cap first and adjust `BEARING_FIT` in `params.py` to your printer.
 
 Fit report (`uv run python build.py`, current parameters): all 36 distinct printed parts fit. The largest are
 the drum halves (236 × 150 × 118, 124 for the upper with its pedestals), the end caps (229.6 × 229.6 × 22), the arms (210 × 210 diagonal), the battery
-cradle (162 × 123 × 70), the winch deck (134 × 94 × 55, on its end), and the dock cradle (234 × 184 × 134) and tower (100 × 140 × 230), all against a 250 mm
+cradle (162 × 123 × 70), the winch deck (134 × 94 × 77 with the speaker cup, on its end), and the dock cradle (234 × 184 × 134) and tower (100 × 140 × 230), all against a 250 mm
 per-axis limit.
 
 ## Open questions
 
 1. **Display stack depth and weight** (Waveshare doesn't list them): measure, then set `EyeSpec.depth` and
    `EYE_KG`. The locked tendons hold the eye whatever it weighs, but with the winches slack the spring's margin
-   shrinks as the eye grows (it folds at 7.46 N, about 760 g, and the sag grows as 1 / (1 − W / 7.46 N)).
+   shrinks as the eye grows (it folds at 3.87 N, about 395 g, and the sag grows as 1 / (1 − W / 3.87 N)). The
+   9657K321 leaves 2.4× on a 165 g eye; a much heavier display wants a stiffer spring or firmware that never slackens
+   all three tendons at once.
 2. **Camera path:** P4 CSI → USB video (one lead per stalk) vs. the IMX219 spy-cam flex to the Jetson's CSI
    (a native driver, but a flat flex up a bending spring). Prototype one stalk both ways.
 3. **Measure before freezing:** STS3250 mounting holes and shaft offset; the worm motor's gearbox, holes, shaft,
    can position (the CAD centres it on the gearbox, 1.45 mm proud of the output face) and encoder size; Jetson hole
    pattern; Pololu hub PCD; spy-cam head size; pogo barrel and stroke; charge module size; the stalk spring's OD,
-   wire and pitch, and its bending stiffness (hang a weight on the tip, measure the sag).
+   wire, active pitch and dead-turn shape (the seat cups are cut from the model), and its bending stiffness (hang a
+   weight on the tip, measure the sag); the reSpeaker Lite's mounting holes, mic positions and part heights; the
+   speaker's depth and magnet size.
 4. **Arm clamshell screws** go through the arm's full thickness. If the arm flexes at 2.9 kg, add a rib or print
    the halves at 40% infill.
-5. **Sim update:** heavier eyes (about 165 g), the 1 in spring (EI 0.118 installed instead of 0.011, 8 N/mm,
+5. **Sim update:** heavier eyes (about 165 g), the 0.875 in spring (EI 0.065 installed instead of 0.011, 5.3 N/mm,
    30 N of preload), tendons that hold when the winches stop, the roots on the crown at y = ±48 with 5° of splay
    instead of 25° forward, the 4S6P pack and the winches should go into `sim/bot.py` before the controllers are
-   retuned. The body is 5.73 kg with its centre of mass 6 mm over the drum axis. The pack is about 1.8 kg, 31% of
+   retuned. The body is 6.00 kg with its centre of mass 10 mm over the drum axis. The pack is about 1.8 kg, 31% of
    the body, centred 0.05 R forward and 0.59 R down (the sim has 0.55 R and 0.4 R). The sim's three cables at 120°
    already match.
 6. **Packs in the arms.** Each arm is hollow and its hub bore (Ø19) is already the lead path, so a 4S pack can ride
@@ -549,10 +683,18 @@ per-axis limit.
    the bot runs.
 7. **Pack build:** confirm the series-group busbar plan with whoever welds it, glue the layers so the nesting holds,
    and put the BMS thermistor in the bottom layer's empty slot.
-8. **Winches on the bench:** check the worm really holds under 176 N (the current limit) with the power off, that
+8. **Winches on the bench:** check the worm really holds under 119 N (the current limit) with the power off, that
    pretensioning against a low current limit repeats to within a few newtons, the tube friction (the numbers
-   assume μ 0.07), and that the 15 mm tube bends don't kink. If the friction is worse, the 90° bend runs out of
-   rated torque first: move the deck tubes' bends apart, or step up to the 564:1 (2.3 N·m, over 2 s for 90°).
+   assume μ 0.07), and that the 15 mm tube bends don't kink. There's a third of the rated torque spare at 90°, so
+   friction up to μ ≈ 0.2 still makes 90° (slower); past that, go to the r 10 pulley or the 564:1.
+10. **A lighter winch.** The 370s are 1.2 kg of the bot. A 180-size worm (NFP-GW180A-S, 100 g) would save 0.6 kg but
+    takes about 2 s for 90° over its rated torque and has no stock encoder. Revisit if a 180-size worm with an
+    encoder and a stronger gearbox turns up, or if 2 s bends turn out to be fine.
+11. **Voice:** check the reSpeaker Lite's speaker connector (if it's amplified, drop the PAM8302A), that its echo
+    cancellation holds with the speaker 115 mm away in the same drum (the shell carries sound; add foam in the cup and
+    round the array if it doesn't), and whether two mics give good enough direction of arrival for turning toward a
+    voice. If not, the 4-mic XVF3800 needs a Ø100 flat spot: the crown between the eyes, outside the drum, is the only
+    one.
 9. **Tendon creep:** Spectra creeps under constant load. At 10 N (3.5% of its strength) it should be slow, but
    re-tension the tendons after the first week, and have the firmware re-zero them against the current limit at
    startup.
