@@ -10,9 +10,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/site/site.css" />
   </head>
-  <body>
+  <body class="home">
+    <critter-crew></critter-crew>
     <header class="top">
-      <a class="mark" href="/"><bot-critter class="mark-face" expression="happy"></bot-critter> mosfet</a>
+      <a class="mark" href="/"><bot-critter class="mark-face" expression="happy" data-crew></bot-critter> mosfet</a>
       <nav>
         <a href="#why">Why it's free</a>
         <a class="pill" href="/workshop.html">Teach a bot <span aria-hidden="true">↘</span></a>
@@ -24,21 +25,21 @@
         <p class="kicker"><span class="dot"></span> Bots that code, plan, and use your computer</p>
         <h1 class="display">
           <span class="line">Teach it</span>
-          <span class="line">once<bot-critter class="inline-face" expression="normal" track></bot-critter><em>then</em></span>
+          <span class="line">once<span class="face-spot"><bot-critter class="inline-face" expression="normal" track data-crew title="poke me"></bot-critter><span class="poke-hint" aria-hidden="true">poke me</span></span><em>then</em></span>
           <span class="line">it's free.</span>
         </h1>
         <div class="hero-foot">
           <p class="lede">Every other bot bills you each time it repeats a routine. A mosfet bot actually learns the job, so the second time costs <b>$0.00</b>. And the thousandth.</p>
-          <a class="cta" href="#demo">Watch it learn <span aria-hidden="true">→</span></a>
+          <a class="cta" href="#demo">Try it, 20 seconds <span aria-hidden="true">↓</span></a>
         </div>
       </section>
 
-      <div class="ticker" aria-label="Things bots have learned">
+      <div class="ticker-wrap"><div class="ticker" aria-label="Things bots have learned">
         <div class="track">
           <span>✓ bug fixes start with a failing test</span><span>✓ offsites are out of town</span><span>✓ client dinners → client project code</span><span>✓ PR titles in imperative mood</span><span>✓ invoices are net 30</span><span>✓ never book before 10am</span><span>✓ staging before prod, always</span><span>✓ reply to Dana in Slack, not email</span>
           <span aria-hidden="true">✓ bug fixes start with a failing test</span><span aria-hidden="true">✓ offsites are out of town</span><span aria-hidden="true">✓ client dinners → client project code</span><span aria-hidden="true">✓ PR titles in imperative mood</span><span aria-hidden="true">✓ invoices are net 30</span><span aria-hidden="true">✓ never book before 10am</span><span aria-hidden="true">✓ staging before prod, always</span><span aria-hidden="true">✓ reply to Dana in Slack, not email</span>
         </div>
-      </div>
+      </div></div>
 
       <section id="demo" class="demo">
         <div class="demo-copy">
@@ -49,6 +50,7 @@
             <li><b>You correct it once.</b> Plain words. No prompt, no config.</li>
             <li><b>Run it again.</b> Your way, instantly, for nothing.</li>
           </ol>
+          <p class="aside">A replay, not a live bot: no model runs on this page, and the prices are illustrative. <a href="/workshop.html">The workshop</a> is the real thing.</p>
         </div>
         <div class="device"><mosfet-maker></mosfet-maker></div>
       </section>
@@ -57,16 +59,23 @@
         <p class="label">02 — Why it's free</p>
         <h2 class="bento-title">Other bots <s>remember</s> re-bill.<br /><em>mosfet learns.</em></h2>
         <div class="grid">
-          <article class="tile tile-money">
-            <p class="tile-label">One routine, every workday, for a year</p>
+          <savings-dial class="tile tile-money">
+            <p class="tile-label">One routine. How often do you run it?</p>
+            <label class="dial">
+              <span class="visually-hidden">How often you run it</span>
+              <input type="range" min="0" max="4" step="1" value="2" />
+            </label>
+            <div class="stops" aria-hidden="true"><span>Monthly</span><span>Weekly</span><span>Daily</span><span>3× a day</span><span>Hourly</span></div>
             <div class="versus">
-              <div><small>Re-run on the model</small><strong class="count them" style="--to: 585">$</strong></div>
-              <div><small>Learned by mosfet</small><strong class="us">$2.34</strong></div>
+              <div><small>Re-run on the model, a year</small><strong class="them" data-dial="them">$585</strong></div>
+              <div><small>Learned by mosfet, a year</small><strong class="us" data-dial="us">$2.34</strong></div>
             </div>
-            <p class="fine">Illustrative. You pay once, the day it figures it out.</p>
-          </article>
+            <p class="quip" data-dial="quip" aria-live="polite">A weekend away, spent re-explaining one thing.</p>
+            <p class="fine">Illustrative, priced like the demo's bug fix. You pay once, the day it figures it out.</p>
+          </savings-dial>
 
-          <article class="tile tile-skills">
+          <article class="tile tile-skills" data-crew-react>
+            <bot-critter class="tile-face" expression="normal" track data-crew></bot-critter>
             <p class="tile-label">What it knows</p>
             <h3>Right there. Flip any of it off.</h3>
             <ul class="skills">
@@ -94,7 +103,9 @@
             <p class="tile-label">Cost over time</p>
             <svg viewBox="0 0 300 120" role="img" aria-label="Other bots' cost climbs forever; mosfet's flattens after learning">
               <path class="them-line" d="M10 110 L290 12" />
-              <path class="us-line" d="M10 110 C40 70, 60 58, 90 56 L290 56" />
+              <path class="us-line" pathLength="1" d="M10 110 C40 70, 60 58, 90 56 L290 56" />
+              <text class="them-tag" x="236" y="14">them</text>
+              <text class="us-tag" x="262" y="48">you</text>
               <circle class="us-dot" cx="90" cy="56" r="5" />
               <text x="78" y="42">learned</text>
             </svg>
@@ -104,7 +115,8 @@
       </section>
 
       <section class="closer">
-        <bot-critter class="closer-face" expression="normal" track></bot-critter>
+        <bot-critter class="closer-face" expression="normal" track data-crew title="poke me"></bot-critter>
+        <p class="poke-note" aria-hidden="true">go on, poke it. (not too much)</p>
         <h2 class="display small">Stop paying for<br /><em>the same answer twice.</em></h2>
         <a class="cta" href="/workshop.html">Teach a bot <span aria-hidden="true">→</span></a>
       </section>
