@@ -69,7 +69,7 @@ POGO_PROUD = 1.5
 PADS = {"gnd": -35.0, "sense": -10.0, "vin": 30.0}
 PAD_W = 12.0  # pad width along y (brass strip)
 
-DOCK_H = 6.0  # dock plate thickness under the skid
+DOCK_H = 6.0  # cradle floor under the skid (the pins press in from below)
 
 
 @dataclass(frozen=True)
@@ -160,17 +160,19 @@ STALK = StalkSpec()
 EYE = EyeSpec()
 
 
-def docked_pose(swing_deg: float = ARM_SWING) -> dict[str, float]:
-    """Body pitch when it sits back on its skid, wheels and skid both on the floor.
+def docked_pose(swing_deg: float = ARM_SWING, lift: float = DOCK_H) -> dict[str, float]:
+    """Body pitch when it sits back on its skid: wheels on the floor, skid on the cradle floor `lift` above it.
 
-    The floor is the common tangent below the skid circle (drum radius + skid) and the wheel circle.
+    The skid circle (drum radius + skid) touches z = lift straight below the drum axis, and the wheel circle
+    touches z = 0. With lift = 0 that's the common tangent of the two circles.
     """
     r1 = DRUM_R + SKID_T
     a = math.radians(swing_deg)
     cx, cz = ARM_L * math.sin(a), ARM_PIVOT - ARM_L * math.cos(a)
     d = math.hypot(cx, cz)
     alpha = math.degrees(math.atan2(cz, cx))
-    beta = alpha - math.degrees(math.acos((r1 - WHEEL_R) / d))  # skid contact direction, xz-angle
-    tilt = -90.0 - beta  # nose-up pitch that puts the contact straight down
-    wheel_x = d * math.cos(math.radians(alpha + tilt))
-    return {"beta": beta, "tilt": tilt, "wheel_x": wheel_x, "axis_z": r1, "axle": (cx, cz)}
+    axle_dir = -90.0 + math.degrees(math.acos((r1 + lift - WHEEL_R) / d))  # axle direction from the drum axis, world
+    tilt = axle_dir - alpha  # nose-up pitch
+    beta = -90.0 - tilt  # skid contact direction in the drum frame: straight down in the world
+    wheel_x = d * math.cos(math.radians(axle_dir))
+    return {"beta": beta, "tilt": tilt, "wheel_x": wheel_x, "axis_z": r1 + lift, "axle": (cx, cz)}

@@ -17,7 +17,6 @@ from .params import (
     BEARING_OD,
     BEARING_W,
     BOSS_Z,
-    DOCK_H,
     DRUM_L,
     EYE,
     JETSON_BOARD,
@@ -126,7 +125,7 @@ def bot(
     for side in (1, -1):
         parts += side_parts(side, s, e, swing, lean, bend, pose["tilt"], refs)  # stalks bend forward to level the eyes
 
-    world = Pos(0, 0, pose["axis_z"] + DOCK_H) * rot_xz(pose["tilt"])
+    world = Pos(0, 0, pose["axis_z"]) * rot_xz(pose["tilt"])
     parts = [p.placed(world) for p in parts]
     if dock:
         parts += [p for p in dock_parts(pose["wheel_x"]) if refs or p.printed]
