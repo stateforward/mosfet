@@ -38,14 +38,17 @@ ARM_PIVOT = round(DRUM_R * GEOMETRY["armPivot"])  # 45 above the drum axis
 ARM_W = round(UNIT * GEOMETRY["armWidth"])  # 80
 ARM_T = round(ARM_W * 0.45)  # 36 plate thickness, printed as two 18 mm clamshell halves
 ARM_SWING = GEOMETRY["armSwing"]  # parked/docked: degrees forward of straight down
-STALK_SPREAD = round(DRUM_L * GEOMETRY["stalkSpread"])  # 39: stalk roots at y = +-39
-STALK_ROOT_DEG = 25.0  # roots sit 25 degrees forward of the drum top
+# Stalk roots sit on the crown, straight above the drum axis (x = 0), mirror-symmetric about y = 0. The drawing's
+# spread (0.26 x 150 = 39) would put two Ø120 eyes on top of each other, so the roots go out to +-48 (the Ø47
+# pedestals end at |y| 71.5, inside the drum's 75) and splay 5 degrees outward, sideways only: screen centres 136 apart.
+STALK_SPREAD = 48.0  # stalk roots at y = +-48
+STALK_SPLAY = 5.0  # degrees each stalk leans outward (a roll about x), none fore-aft
 
 SHELL = 3.0  # drum wall
 CAP_T = 8.0  # end cap thickness
 SKID_T = 4.0  # skid proud of the drum
 ARM_Y0 = DRUM_L / 2 + 1  # arm inner face, 1 mm outside the end cap
-BOSS_Z = 117.0  # stalk pedestal top (drum frame): clears the drum crown behind the 44 mm base plate
+BOSS_Z = 122.0  # stalk pedestal top on the crown (drum frame): the splayed Ø47 base plate clears the drum
 
 # --- bought parts (see README BOM; UNVERIFIED ones are marked) -----------------------------------------------------
 BEARING_OD, BEARING_ID, BEARING_W = 37.0, 25.0, 7.0  # 6805-2RS
@@ -73,61 +76,128 @@ DOCK_H = 6.0  # cradle floor under the skid (the pins press in from below)
 
 
 @dataclass(frozen=True)
+class SpringSpec:
+    """A helical compression spring used as a stalk's spine: bought steel or printed. All mm.
+
+    `ei` is what matters: the stalk bends, it isn't squashed. For an open-coiled helical spring under pure bending,
+    EI = d^4 p / (32 D (1/E + 1/2G)), with d the wire, D the mean coil diameter and p the pitch (same model as
+    `sim/bot.py` Spring).
+    """
+
+    name: str
+    od: float
+    wire: float
+    free_length: float
+    pitch: float  # plain (open) ends, constant pitch: the collars and guide discs screw on along the coil
+    printed: bool
+    material: str
+    e_gpa: float
+    g_gpa: float
+
+    @property
+    def mean_d(self) -> float:
+        return self.od - self.wire
+
+    @property
+    def id(self) -> float:
+        return self.od - 2 * self.wire
+
+    @property
+    def coils(self) -> float:
+        return self.free_length / self.pitch
+
+    @property
+    def rate(self) -> float:
+        """Axial rate, N/mm."""
+        return self.g_gpa * 1e3 * self.wire**4 / (8 * self.mean_d**3 * self.coils)
+
+    @property
+    def ei(self) -> float:
+        """Bending stiffness, N·m²."""
+        compliance = 1 / (self.e_gpa * 1e9) + 1 / (2 * self.g_gpa * 1e9)
+        return (self.wire * 1e-3) ** 4 * self.pitch * 1e-3 / (32 * self.mean_d * 1e-3 * compliance)
+
+
+# UNVERIFIED part: any 3/4 in OD x 0.120 in music-wire compression spring (e.g. McMaster 9657K-series or Lee Spring
+# LC-series long stock), plain ends, cut to 150 mm with about 9 mm pitch. Measure OD, wire and pitch, set them here.
+# Sized for the ~160 g eye (with its tip plate) 73 mm above the spring's top: the load that would buckle it sideways,
+# EI / (L^2/2 + a L), is ~6.2 N against the eye's 1.6 N, so the 5 degree splay sags only to about 6.7 degrees.
+STEEL_SPRING = SpringSpec("music wire 3/4 in OD x 0.120 in wire, cut to 150", 19.05, 3.05, 150.0, 9.0, False, "music wire", 207.0, 79.3)
+# The printed alternative: PETG is ~100x softer than steel, so the coil has to be much fatter to carry the eye.
+# Print it upright with tree supports under the coils. Its stiffness is UNVERIFIED (layer lines, creep).
+PRINTED_SPRING = SpringSpec("printed PETG coil, 30 OD x 6 wire", 30.0, 6.0, 150.0, 12.0, True, "PETG", 2.0, 0.75)
+
+
+@dataclass(frozen=True)
 class StalkSpec:
-    """Loc-Line style ball-and-socket stalk. All mm."""
+    """Spring stalk: base plate, spring, guide discs, tip plate. Three tendons at 120 degrees, one servo each. All mm."""
 
-    length: float = 170.0  # base plate to tip top, drawing ratio (unit x 0.24)
-    ball_dia: float = 20.0
-    pitch: float = 18.0  # ball centre to socket centre on one segment
-    interference: float = 0.25  # diametral ball/socket interference: friction that holds a pose
-    snap: float = 0.5  # radial undercut at the socket mouth: how far it snaps over the ball
-    wall: float = 2.4
-    bore: float = 10.0  # central cable bore (USB-C lead, or the 9 mm camera flex)
-    tendon_r: float = 12.0  # tendon holes on this radius
-    flange_r: float = 14.0  # stalk outer radius: Ø28 vs the drawing's Ø24
+    spring: SpringSpec = STEEL_SPRING
+    guides: int = 5
+    guide_t: float = 4.0
+    guide_step: float = 24.0  # target spacing, rounded to whole pitches so every disc is the same part
+    collar_turns: float = 1.5  # coil turns the base and tip collars grip
+    plate_t: float = 5.0
+    bore: float = 12.0  # display lead (USB-C with a slim plug, <= 11.5 wide: UNVERIFIED)
+    tendons: int = 3
     tendon_hole: float = 1.5  # for 0.41 mm Spectra
-    slits: int = 4  # socket skirt slits: tune the snap and the hold
-    slit_w: float = 1.0
-    tendons: int = 4  # 2 antagonistic pairs, one double pulley per pair
+    clearance: float = 0.25  # radial, coil groove over the wire
 
     @property
-    def rb(self) -> float:
-        return self.ball_dia / 2
+    def tendon_r(self) -> float:
+        """Tendons stand 5 mm off the spring: a bigger radius means less pull, and less shortening, per degree."""
+        return self.spring.od / 2 + 5
 
     @property
-    def rc(self) -> float:
-        return self.rb - self.interference / 2
+    def guide_r(self) -> float:
+        return self.tendon_r + 3
 
     @property
-    def ro(self) -> float:
-        return self.rc + self.wall
+    def collar_r(self) -> float:
+        return self.spring.od / 2 + 2.5
 
     @property
-    def h(self) -> float:
-        """Depth of the socket mouth below the socket centre."""
-        mouth = self.rb - self.snap
-        return math.sqrt(self.rc**2 - mouth**2)
+    def collar_h(self) -> float:
+        return self.collar_turns * self.spring.pitch
 
     @property
-    def rn(self) -> float:
-        return self.rb * 0.62
+    def bolt_r(self) -> float:
+        """Base plate to pedestal, 3 x M3."""
+        return self.tendon_r + 5
 
     @property
-    def base_h(self) -> float:
-        return self.rc + 12
+    def base_r(self) -> float:
+        return self.bolt_r + 4
 
     @property
-    def tip_h(self) -> float:
-        return self.rc + 8
+    def tip_bolts(self) -> tuple[tuple[float, float], ...]:
+        """Tip plate to the eye's chin, 2 x M3 from below (heads beside the collar), under the display stack (x = -8)."""
+        y = self.collar_r + 1.5
+        return ((-8.0, y), (-8.0, -y))
 
     @property
-    def segments(self) -> int:
-        return max(1, round((self.length - self.base_h - self.tip_h) / self.pitch))
+    def tip_r(self) -> float:
+        return self.tendon_r + 7
+
+    @property
+    def length(self) -> float:
+        """Base plate bottom to tip plate top."""
+        return self.plate_t + self.spring.free_length + self.plate_t
+
+    @property
+    def guide_z(self) -> list[float]:
+        """Guide disc centres, spring frame (0 at the spring's bottom end), a whole number of pitches apart."""
+        p = self.spring.pitch
+        step = p * max(1, round(self.guide_step / p))
+        free = self.spring.free_length - 2 * self.collar_h
+        n = min(self.guides, int((free - self.guide_t) // step) + 1)
+        start = self.collar_h + (free - (n - 1) * step) / 2
+        return [start + i * step for i in range(n)]
 
 
 @dataclass(frozen=True)
 class EyeSpec:
-    """Round colour display in a printed bezel with a camera bump on its rim."""
+    """Round colour display in a printed bezel with a camera bump on its rim, centred on the stalk axis."""
 
     glass_d: float = 115.0  # Waveshare ESP32-P4-WIFI6-Touch-LCD-3.4C outline (round, 800x800, 87.6 mm active)
     depth: float = 18.0  # UNVERIFIED: glass + board stack behind it
@@ -135,8 +205,10 @@ class EyeSpec:
     lip: float = 2.5
     cam_deg: float = 30.0  # camera bump position on the rim, degrees from the top toward the outside
     cam_w: float = 10.0  # UNVERIFIED: spy-camera head, square
-    post_r: float = 14.0
     back_t: float = 2.5  # back cover: it rides at the stalk tip, so keep it thin
+    rise: float = 8.0  # bottom of the rim above the stalk tip: the bezel's chin fills it and bolts to the tip plate
+    chin_w: float = 36.0  # chin lug width along y
+    chin_up: float = 8.0  # how far the chin runs up into the rim
 
     @property
     def pocket_r(self) -> float:
@@ -148,7 +220,13 @@ class EyeSpec:
 
     @property
     def centre_z(self) -> float:
-        return self.rim_r + 12
+        """Screen centre above the stalk tip, on the stalk axis."""
+        return self.rim_r + self.rise
+
+    @property
+    def back_x(self) -> float:
+        """The bezel's back face, x: puts the display glass (centre) on the stalk axis, x = 0."""
+        return 1.0 - self.depth
 
     @property
     def bump_r(self) -> float:

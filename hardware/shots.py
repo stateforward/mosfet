@@ -66,9 +66,14 @@ def main(outdir: str, port: int = 3939, settle: float = 2.0) -> None:
         "dock_section": (section(whole, -12.0), (-20, 1300, 150), (-20, 0, 120), 1.3),
     }
     k = kit()
-    stalk = [p for p in k if "stalk" in p.name][:4]
-    shots["stalk_segments_section"] = (section(stalk), (0, 260, 60), (0, 0, 45), 1.0)
-    shots["stalk_kit"] = (k, (450, -420, 300), (-40, 0, 120), 1.0)
+    stalk_eye = [p for p in k if "pod" not in p.name and "pulley" not in p.name and "STS" not in p.name]
+    lower = [p for p in stalk_eye if p.name.startswith(("stalk base", "REF stalk spring", "stalk spring", "stalk guide 1"))]
+    # the base collar and first guide disc screwed onto the coil, cut through the stalk axis
+    shots["stalk_collar_section"] = (section(lower, 0.0), (0, 320, 30), (0, 0, 30), 2.2)
+    # side view: the screen centre sits on the stalk axis, the mount's spine behind it
+    shots["stalk_eye_side"] = (stalk_eye, (0, -900, 160), (0, 0, 160), 1.0)
+    shots["stalk_eye_front"] = (stalk_eye, (900, 0, 160), (0, 0, 160), 1.0)
+    shots["stalk_kit"] = (k, (450, -420, 300), (-60, 0, 120), 1.0)
     for name, (parts, pos, target, zoom) in shots.items():
         _show(parts, pos, target, zoom=zoom)
         time.sleep(settle)  # a software-GL (headless) viewer needs longer to draw

@@ -16,14 +16,12 @@ from .params import (
     BEARING_ID,
     BEARING_OD,
     BEARING_W,
-    BOSS_Z,
     DRUM_L,
     EYE,
     JETSON_BOARD,
     JETSON_H,
     MDD10A,
     STALK,
-    STALK_SPREAD,
     EyeSpec,
     StalkSpec,
     docked_pose,
@@ -56,7 +54,7 @@ def electronics() -> list[Part]:
     ]
 
 
-def side_parts(side: int, s: StalkSpec, e: EyeSpec, swing: float, lean: float, bend: float, level: float, refs: bool) -> list[Part]:
+def side_parts(side: int, s: StalkSpec, e: EyeSpec, swing: float, refs: bool) -> list[Part]:
     tag = "L" if side > 0 else "R"
     arm_loc = Pos(0, 0, ARM_PIVOT) * rot_xz(swing)
     parts = [
@@ -79,12 +77,11 @@ def side_parts(side: int, s: StalkSpec, e: EyeSpec, swing: float, lean: float, b
     parts[0].print_pose = Rot(side * 90, 0, 0)
 
     pod_loc = Pos(B.POD_CENTRE[0], side * B.POD_CENTRE[1], B.POD_CENTRE[2]) * (Location() if side > 0 else Rot(0, 0, 180))
-    parts += pod_parts(pod_loc, f"{tag} ", refs)
+    parts += pod_parts(pod_loc, s.tendons, f"{tag} ", refs)
 
-    root = Pos(50, side * STALK_SPREAD, BOSS_Z)  # the base plate sits flat on its pedestal; the joints do the leaning
-    stalk, tip_top = stalk_parts(s, root, -side * (lean + bend), level, f"{tag} ")
+    stalk, tip_top = stalk_parts(s, B.stalk_root(side), f"{tag} ")  # straight up the splayed pedestal: no bend at rest
     parts += stalk
-    parts += eye_parts(e, tip_top, side, f"{tag} ", refs)
+    parts += eye_parts(e, s, tip_top, side, f"{tag} ", refs)
 
     if refs:
         parts += [
@@ -103,8 +100,6 @@ def bot(
     s: StalkSpec = STALK,
     e: EyeSpec = EYE,
     swing: float = ARM_SWING,
-    lean: float = 4.0,
-    bend: float = 8.0,
     refs: bool = True,
     dock: bool = True,
 ) -> list[Part]:
@@ -123,7 +118,7 @@ def bot(
         parts += electronics()
         parts += [_ref(f"brass pad {n}", shape, C.METAL) for n, shape in B.pads(beta)]
     for side in (1, -1):
-        parts += side_parts(side, s, e, swing, lean, bend, pose["tilt"], refs)  # stalks bend forward to level the eyes
+        parts += side_parts(side, s, e, swing, refs)  # docked, the whole bot (eyes too) pitches back pose["tilt"]
 
     world = Pos(0, 0, pose["axis_z"]) * rot_xz(pose["tilt"])
     parts = [p.placed(world) for p in parts]

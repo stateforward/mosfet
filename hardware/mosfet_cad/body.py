@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 
-from build123d import Face, Pos, Solid, Vector, Wire
+from build123d import Face, Location, Pos, Rot, Solid, Vector, Wire
 
 from .geom import box, cut, cyl, fuse, polar, rot_xz
 from .params import (
@@ -36,10 +36,13 @@ from .params import (
     SERVO_W,
     SHELL,
     SKID_T,
+    STALK,
+    STALK_SPLAY,
     STALK_SPREAD,
     WHEEL_R,
     WHEEL_W,
 )
+from .stalk import POD_FLANGE, POD_FLANGE_HOLES, POD_TOP, bolt_xy, pod_size, tendon_xy
 
 RI = DRUM_R - SHELL  # drum inner radius
 CAP_IN = DRUM_L / 2 - CAP_T  # end cap inner face, |y|
@@ -53,9 +56,10 @@ PIN_Z = ARM_PIVOT + CENTRE_DIST * math.sin(math.radians(PINION_DEG))
 
 JETSON_X0 = -60.0  # carrier board back edge, x
 TRAY_Z = (-70.0, -66.0)
-POD_CENTRE = (69.0, STALK_SPREAD, 0.0)  # stalk servo pod, left side (pod bottom z)
-POD_FLANGE_HOLES = (-20.0, 20.0)  # x offsets from the pod centre, at pod mid-height
-POD_TOP = 31.0
+# Stalk servo pod, left side: (x, y, bottom z). Three servos side by side along x, low and forward: clear of the
+# arm gear and bearing boss above it, the shelf behind it and the regulators and tray tabs below it. Its flange
+# sits on the end cap's inner face.
+POD_CENTRE = (67.0, CAP_IN - POD_FLANGE - pod_size(STALK.tendons)[3], -20.0)
 
 MOTOR_R = MOTOR_D / 2 + 0.2  # clamp bore
 MOTOR_FACE = ARM_Y0 + ARM_T + 56  # gearbox face, |y|: the motor sits in a sleeve inside the wheel
@@ -86,21 +90,22 @@ def _cap_screw_holes(angles, rad):
     return out
 
 
+def stalk_root(side: int) -> Location:
+    """A stalk's root frame: on the crown straight above the drum axis (x = 0), splayed outward about x only."""
+    return Pos(0, side * STALK_SPREAD, BOSS_Z) * Rot(-side * STALK_SPLAY, 0, 0)
+
+
 def shell_upper():
-    """Top half of the drum, with the two stalk pedestals 25 degrees forward of the top."""
-    bosses = [cyl((50, s * STALK_SPREAD, 95), (50, s * STALK_SPREAD, BOSS_Z), 22) for s in (1, -1)]
+    """Top half of the drum, with the two stalk pedestals on the crown, straight above the drum axis."""
+    bosses = [cyl((0, 0, -35), (0, 0, 0), STALK.base_r).moved(stalk_root(s)) for s in (1, -1)]
     body = fuse(_half_tube(True), *bosses)
     tools = [cyl((0, -DRUM_L, 0), (0, DRUM_L, 0), RI)]
     tools += _cap_screw_holes((30, 150), 1.7)
     for s in (1, -1):
-        y = s * STALK_SPREAD
-        tools.append(cyl((50, y, 80), (50, y, BOSS_Z + 1), 6))
-        for i in range(4):
-            dx, dy = polar(12, i * 90)
-            tools.append(cyl((50 + dx, y + dy, 80), (50 + dx, y + dy, BOSS_Z + 1), 2.1))  # PTFE tube
-        for i in range(3):
-            dx, dy = polar(18, 60 + i * 120)
-            tools.append(cyl((50 + dx, y + dy, BOSS_Z - 8), (50 + dx, y + dy, BOSS_Z + 1), 2.0))  # M3 insert
+        local = [cyl((0, 0, -45), (0, 0, 1), STALK.bore / 2 + 0.5)]  # display lead
+        local += [cyl((x, y, -45), (x, y, 1), 2.1) for x, y in tendon_xy(STALK)]  # PTFE tube
+        local += [cyl((x, y, -8), (x, y, 1), 2.0) for x, y in bolt_xy(STALK.bolt_r)]  # M3 insert
+        tools += [t.moved(stalk_root(s)) for t in local]
     return cut(body, *tools)
 
 
@@ -138,7 +143,7 @@ def end_cap(side: int):
         return cyl((x, y_in - side, z), (x, side * (CAP_IN + 6), z), 2.0)
 
     tools += [insert(x, -56) for x in (-40, 40)]  # tray tabs
-    tools += [insert(POD_CENTRE[0] + dx, POD_TOP / 2) for dx in POD_FLANGE_HOLES]  # stalk servo pod
+    tools += [insert(POD_CENTRE[0] + dx, POD_CENTRE[2] + POD_TOP / 2) for dx in POD_FLANGE_HOLES]  # stalk pod
     tools += [insert(*p) for p in ARM_SERVO_POSTS]  # arm servo mount
     return cut(body, *tools)
 

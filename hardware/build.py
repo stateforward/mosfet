@@ -11,6 +11,7 @@ The viewer: `uv run python -m ocp_viewer --port 3939`, then open http://localhos
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 import time
@@ -81,6 +82,23 @@ def clash_report(parts: list[Part], min_volume: float = 1.0) -> list[str]:
     return lines
 
 
+def stalk_report() -> str:
+    """The spring spine's numbers: what bends the stalk and what that costs the servos."""
+    from mosfet_cad.params import STALK
+
+    sp = STALK.spring
+    moment = sp.ei * (math.pi / 2) / (sp.free_length / 1000)  # N·m for a 90 degree constant-curvature bend
+    pull = moment / (STALK.tendon_r / 1000)
+    guides = ", ".join(f"{z:.0f}" for z in STALK.guide_z)
+    return (
+        f"\n== stalk spring: {sp.name} ({sp.material}, {'printed' if sp.printed else 'bought'}) ==\n"
+        f"OD {sp.od} x wire {sp.wire} x {sp.free_length:.0f} long, pitch {sp.pitch}, {sp.coils:.1f} coils, ID {sp.id:.1f}\n"
+        f"EI {sp.ei:.3f} N·m2, axial {sp.rate:.1f} N/mm; a 90 deg bend takes {moment:.2f} N·m: {pull:.0f} N of tendon "
+        f"at r {STALK.tendon_r}, and the spring shortens {pull / sp.rate:.1f} mm\n"
+        f"guide discs at {guides} mm up the spring"
+    )
+
+
 def export(parts: list[Part], printed: dict[str, tuple[Part, int]], name: str) -> None:
     OUT.mkdir(exist_ok=True)
     (OUT / "print").mkdir(exist_ok=True)
@@ -146,12 +164,8 @@ def main() -> int:
             print("\n".join(clashes))
         if not args.no_export:
             export(parts, printed, name)
+    print(stalk_report())
     if not args.no_export:
-        from mosfet_cad.kit import fit_sweep
-
-        OUT.mkdir(exist_ok=True)
-        for stem, shape in fit_sweep():
-            export_stl(shape, OUT / "print" / f"{stem}.stl")
         print(f"\nexported to {OUT}")
 
     if not args.no_show:
