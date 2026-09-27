@@ -4,63 +4,50 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>mosfet workshop</title>
-    <meta name="description" content="Run a mosfet bot, correct it once, watch every run after come back free." />
+    <meta name="description" content="Build a mosfet bot, give it a real job, correct it once, and watch every run after come back free." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/site/site.css" />
     <style>
-      body { display: grid; grid-template-rows: auto auto 1fr; min-block-size: 100%; }
-      .workshop-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-block: 1.1rem; position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--paper) 85%, transparent); backdrop-filter: blur(10px); }
+      .workshop-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem clamp(16px, 4vw, 48px); max-inline-size: 90rem; margin-inline: auto; }
       .workshop-top .mark { display: flex; align-items: center; gap: .5rem; font: 600 19px var(--sans); letter-spacing: -0.02em; text-decoration: none; }
       .workshop-top .mark bot-critter { inline-size: 2.1rem; block-size: 1.8rem; }
-      .workshop-top nav { display: flex; gap: 1.6rem; align-items: center; font-size: 15px; }
+      .workshop-top nav { display: flex; gap: 1.4rem; align-items: center; font-size: 15px; }
       .workshop-top nav a { text-decoration: none; }
       .workshop-top nav a:not(.pill):hover { text-decoration: underline; text-underline-offset: 4px; }
+      .workshop-top nav a[aria-current="page"] { font-weight: 600; }
       .workshop-top nav a.pill { background: var(--ink); color: var(--paper); border-radius: 999px; padding: .5rem 1rem; font-weight: 500; }
       .workshop-top nav a.pill:hover { background: var(--signal); }
-      .bench-head { max-inline-size: 90rem; margin-inline: auto; padding-inline: clamp(16px, 4vw, 48px); width: 100%; }
-      .bench-head h1 { font: 400 clamp(2.6rem, 7vw, 5.5rem)/.95 var(--serif); letter-spacing: -0.03em; margin: 1.2rem 0 .4rem; }
-      .bench-head h1 em { color: var(--signal); }
-      .bench-head .lede { font-size: clamp(1rem, 1.6vw, 1.25rem); color: var(--ink-2); max-inline-size: 38rem; margin: 0 0 1.5rem; }
-      .bench-head .lede b { color: var(--ink); font-family: var(--mono); font-weight: 600; background: #c9f2e2; padding: 0 .25em; border-radius: 4px; }
-      main { min-block-size: 0; display: grid; justify-items: center; align-content: start; gap: 1.6rem; padding: 0 16px 3rem; }
-      mosfet-bench { inline-size: min(56rem, 100%); }
-      mosfet-builder { inline-size: min(56rem, 100%); }
-      mosfet-chat {
-        inline-size: min(56rem, 100%); block-size: 34rem;
-        --chat-accent: var(--signal);
-        --chat-ink: var(--ink);
-        --chat-muted: var(--ink-2);
-        --chat-panel: #ffffff;
-        --chat-line: var(--rule);
-        --chat-sans: var(--sans);
-      }
-      mosfet-chat li[data-who="you"] { color: #fff; }
-      footer { text-align: center; color: var(--ink-2); font: 500 13px var(--mono); padding-block: 2rem; }
+      .workshop { max-inline-size: 90rem; margin-inline: auto; padding: 0 clamp(16px, 4vw, 48px) 3rem; }
+      .workshop-head { display: flex; justify-content: space-between; align-items: end; gap: 1rem 2rem; flex-wrap: wrap; margin: .4rem 0 1.2rem; }
+      .workshop-head h1 { font: 400 clamp(2.6rem, 6vw, 4.6rem)/.92 var(--serif); letter-spacing: -0.035em; margin: 0; }
+      .workshop-head h1 em { color: var(--signal); }
+      .workshop-head p { margin: 0; max-inline-size: 30rem; color: var(--ink-2); font-size: clamp(.98rem, 1.4vw, 1.1rem); line-height: 1.4; }
+      .workshop-head p b { color: var(--ink); font-family: var(--mono); font-weight: 600; background: #c9f2e2; padding: 0 .25em; border-radius: 4px; }
+      mosfet-bench { display: block; }
+      .workshop-foot { max-inline-size: 90rem; margin-inline: auto; text-align: center; color: var(--ink-2); font: 500 13px var(--mono); padding: 0 16px 2.5rem; border: 0; display: block; }
+      @media (max-width: 640px) { .workshop-top nav a:not(.pill) { display: none; } }
     </style>
   </head>
   <body>
     <header class="workshop-top">
       <a class="mark" href="/"><bot-critter class="mark-face" expression="happy"></bot-critter> mosfet</a>
-      <nav><a href="/">home</a><a href="/topology.html">topology</a><a href="/face.html">bot</a><a class="pill" href="/">get a bot <span aria-hidden="true">↘</span></a></nav>
+      <nav><a href="/">home</a><a href="/workshop.html" aria-current="page">workshop</a><a href="/face.html">bot</a><a class="pill" href="/">get a bot <span aria-hidden="true">↘</span></a></nav>
     </header>
-    <div class="bench-head">
-      <h1>The <em>workshop</em></h1>
-      <p class="lede">Run the bot on a real job. Correct it once, in plain words. Every run after that is <b>$0.00</b> — the rule is pinned, no model call.</p>
-    </div>
-    <main>
-      <mosfet-builder></mosfet-builder>
+    <main class="workshop">
+      <div class="workshop-head">
+        <h1>The <em>workshop</em></h1>
+        <p>Build a bot and give it a real job. Correct it once, in plain words — every run after that is <b>$0.00</b>, because the rule is pinned and no model gets called.</p>
+      </div>
       <mosfet-bench></mosfet-bench>
-      <mosfet-chat></mosfet-chat>
     </main>
-    <footer>run it · correct it once · it stays learned</footer>
+    <p class="workshop-foot">build it · run it · correct it once · it stays learned</p>
     <script type="module">
-      import { registerMosfetBench } from "/src/bench/mosfet-bench.ts";
-      import { registerMosfetBuilder } from "/src/bench/mosfet-builder.ts";
-      registerMosfetBench();
-      registerMosfetBuilder();
+      import { defineBotCritterElement } from "/src/face/bot-critter.ts";
+      import { defineMosfetBenchElement } from "/src/bench/mosfet-bench.ts";
+      defineBotCritterElement();
+      defineMosfetBenchElement();
     </script>
-    <script type="module" src="/src/playground/main.ts"></script>
   </body>
 </html>
