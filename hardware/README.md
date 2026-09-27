@@ -12,6 +12,7 @@ uv run python build.py                      # build, check fit, export, show in 
 uv run python build.py --only kit           # just the stalk test kit
 uv run python build.py --clash --no-show    # also list every pair of overlapping parts
 uv run python shots.py out/shots            # render the proof views through the viewer
+uv run python shots.py out/shots 3947 10    # ...through a second viewer on 3947, 10 s per view (headless GL)
 ```
 
 `build.py` writes to `out/` (git-ignored):
@@ -31,7 +32,7 @@ on any axis (256 mm less 3 mm margin each side).
 | `mosfet_cad/eye.py` | eye bezel with camera bump, eye back with mounting post |
 | `mosfet_cad/kit.py` | the stalk test kit and the fit sweep |
 | `mosfet_cad/body.py` | drum halves, end caps, tray, shelf, battery sling, driver mount, skid, gears, arms, wheels |
-| `mosfet_cad/dock.py` | charging dock |
+| `mosfet_cad/dock.py` | charging dock: pad with the pins, two wheel lanes, backstop tower with the tag |
 | `mosfet_cad/assembly.py` | the whole bot in its docked pose, on the dock |
 
 Frames follow the sim: x forward, y left (the drum axis), z up; millimetres. Anything marked UNVERIFIED below
@@ -49,7 +50,7 @@ proportion comes from `GEOMETRY` in `sim/bot.py`:
 | arms | 184 pivot to axle, 80 wide, 36 thick; pivot 45 above the drum axis; parked 50° forward |
 | stalks | 166 long (base plate to tip top), roots 25° forward of the top, 78 apart |
 | eyes | Ø124 bezel (Ø115 round display), camera bump on the rim |
-| overall, docked | 372 wide (tyre to tyre), 359 long, 540 tall; on the dock 383 × 400 footprint |
+| overall, docked | 372 wide (tyre to tyre), 359 long, 540 tall; dock 450 × 501 |
 
 Docked, the bot sits on its wheels and its skid. The skid touches at 14.4° behind the drum's bottom, so the body
 pitches back 14.4°, and the stalks bend forward by the same amount to keep the eyes level
@@ -161,14 +162,31 @@ It's a 3.4" round IPS, 800×800, 87.6 mm active area on a Ø115 outline, with it
 
 ## Charging dock
 
-The bot docks by sitting down. The parked pose is the docking pose: it drives up balancing, facing the tag mast,
-stops over the dock pad, and sits. The arms swing forward, the wheels roll forward into the two cradles, and the
-drum tips back until the skid lands on the pad.
+The bot backs in, so from the room you see the bot and none of the charging hardware (`bot_front.png`). The
+parked pose is still the docking pose. The skid is on the back of the drum, so reversing already leads with the
+contacts. The bot arrives facing away from the dock, balancing, and reverses onto it with its eyes looking back
+over the drum. It stops when its wheels drop into the two troughs. Then it sits: the wheels stay in the troughs,
+the arms swing forward, and the drum swings back and down until the skid lands on the pins. Docked, the bot
+faces the room.
 
-- **Guides.** Each cradle has a circular trough (wheel radius + 3 mm) that centres its wheel fore-aft. Walls sit
-  8 mm clear of the tyre on each side, and their entry ends are cut to the ramp slope, so they flare. A 15° ramp
-  brings the wheels up from the floor. The contact strips are 12 mm wide and 36 mm long along the skid, so the
-  skid tolerates about ±6 mm sideways and ±15 mm fore-aft.
+- **Guides (reversing approach).** Each wheel lane starts at the front with a 15° ramp (22 mm over 80 mm), so
+  the entry lip is 22 mm. Both walls of a lane flare out 25 mm over the ramp, so they converge at 17°, and they
+  stand 14 mm above the ramp surface. With the 8 mm tyre clearance, the mouth catches a wheel up to about 33 mm
+  off-line. A wheel coming in up to about 10° off-axis meets a wall at a glancing angle, gets steered by it, and
+  reaches the trough within the 8 mm clearance. The trough (wheel radius + 3 mm) is 16 mm deep and centres the
+  wheel fore-aft. Its rear wall keeps curving up to 45 mm. That's the **backstop**: a wheel that tops the ramp
+  drops into the trough and can't roll past it. So the wheels land in the same spot every time, and when the
+  bot sits, its geometry puts the skid on the pins. The pads tolerate about ±6 mm sideways and ±15 mm fore-aft
+  (12 × 36 mm strips).
+- **Everything electrical is out of sight.** The three pins are pressed into the pad at x = 0, under the drum's
+  lowest point. Their wires run in a 2 mm channel on the pad's underside back to the tower. The tower stands
+  behind the drum. It's 140 wide, inside the drum's 150 mm length, and 180 tall, below the drum crown at 259.
+  The VIN switch board goes in its bay, which opens underneath, and the 24 V jack is on its rear face. From the
+  front, the drum covers the tower. The pins sit under the drum, so the drum blocks them from any viewpoint
+  above floor level. From the room you see the bot, the ramps, and the pad's 6 mm front edge.
+- **Clearance.** The tower's front face leans back 20° from x = −105 at the floor. That leaves 20 mm between
+  the face and the skid circle when docked, so a sit that overshoots ends against the tower's face and the skid
+  stays on the pad.
 - **Contacts.** On the bot are three brass strips in the skid: GND at y = −35, SENSE at −10, VIN at +30. On the
   dock are three spring pins (Mill-Max 0873 power pins, 9 A,
   [datasheet](https://www.mill-max.com/products/discrete-spring-loaded-pins/through-hole-mount-spring-loaded-pin/0873/0873-0-15-20-82-14-11-0))
@@ -178,17 +196,30 @@ drum tips back until the skid lands on the pad.
   GND on the bot). That uses a small comparator plus a P-FET high-side switch, so the pins are dead until the
   bot is seated correctly. A mis-seat can't short, and nothing on the dock is live when no bot is on it. On the
   bot, VIN goes through an ideal diode, so the pads are never live from the battery.
-- **Docked detection.** The bot sees charger input voltage on a divider into the Teensy ADC. For homing, a
-  94 mm AprilTag 36h11 (printed and glued into the mast's recess) faces the approach, so the eye cameras can see
-  it. An IR beacon can go on the mast later.
+- **Homing while reversing.** A 94 mm AprilTag 36h11 (printed and glued into a 1 mm recess) is on the tower's
+  front face, facing the bot, with its centre 100 mm up the face (z ≈ 94). An optional 5 mm 940 nm IR LED
+  beacon sits above it (z ≈ 150). Why there:
+  - The stalks bend about 270°, so on the way in the eyes curl back over the drum and look down behind it. The
+    face leans back 20° so it points up toward the eyes instead of across the floor, which keeps the tag from
+    being foreshortened.
+  - The tag stays in view for the whole approach. A 2D line-of-sight check against the drum in the balancing
+    pose (drum axis 225 mm up) keeps the whole tag visible until the drum axis is 70 mm from its docked
+    position, with the eye level over the drum crown. With the eye pushed 110 mm forward that becomes 160 mm,
+    and with the eye curled back behind the crown, 40 mm. The wheels drop into the troughs with the drum axis
+    about 155 mm out, so even for the worst eye position the tag is visible until the troughs take over.
+  - Once docked, the tag is hidden. It spans z 50–138 at |y| ≤ 47, behind the drum and well under the crown,
+    so it only shows from the side or from behind.
+- **Docked detection.** The bot sees charger input voltage on a divider into the Teensy ADC.
 - **Power path.** Unattended charging needs a pack with a BMS. The bare RC LiPo in the research draft is
   replaced by a **4S1P 21700 Li-ion pack with BMS**: Keeppower 6000 mAh, 90 × 75 × 22.8 mm,
   [product](https://keeppower.com/product/4s1p-21700-14-4v-6000mah-li-ion-battery-pack-with-amass-xt30u-connector/).
-  The dock supplies 24 V from a laptop-style adapter. On the bot, a CC/CV buck module (XL4015-class, 5 A, set to
-  16.8 V / 1.5 A) charges the pack. The Teensy measures charge current (INA219) and cuts the charger off when
-  it tapers below C/10, so the pack doesn't sit at 4.2 V/cell. The BMS is the backstop.
-- **Parts.** Pad, two cradles, and the tag mast (40 × 200 × 200), joined by six printed dog-bone keys in pockets
-  on the underside. All fit the X1.
+  The dock takes 24 V from a laptop-style adapter into a panel jack on the tower's back (Ø11 hole,
+  UNVERIFIED). On the bot, a CC/CV buck module (XL4015-class, 5 A, set to 16.8 V / 1.5 A) charges the pack.
+  The Teensy measures charge current (INA219) and cuts the charger off when it tapers below C/10, so the pack
+  doesn't sit at 4.2 V/cell. The BMS is the backstop.
+- **Parts.** Pad (245 × 200 × 6), two wheel lanes (221 × 150 × 45), and the tower (110 × 140 × 180), joined by
+  six printed dog-bone keys in pockets on the underside: four across the pad/lane seams, and two across the
+  pad/tower seam (the same key turned 90°). Every part fits the X1. The whole dock is 450 × 501.
 
 ## BOM
 
@@ -215,6 +246,8 @@ come from the parts research draft, which isn't in the repo.
 | Ideal diode module (charge input) | 1 | generic | keeps the pads dead from the battery |
 | INA219 current sensor | 1 | [Adafruit 904](https://www.adafruit.com/product/904) | charge termination |
 | 24 V ≥2.5 A DC adapter (dock) | 1 | any laptop-style brick | |
+| 5.5 × 2.1 mm panel DC jack | 1 | generic | dock tower, rear face |
+| 940 nm 5 mm IR LED | 1 | generic | optional homing beacon |
 | Mill-Max 0873 spring power pins | 3 | [Mill-Max](https://www.mill-max.com/products/discrete-spring-loaded-pins/through-hole-mount-spring-loaded-pin/0873/0873-0-15-20-82-14-11-0) | dock contacts |
 | Brass strip 0.8 × 12 mm | 150 mm | hobby/K&S | bot pads |
 | 6805-2RS bearings (25 × 37 × 7) | 4 | Amazon | arm pivots |
@@ -241,14 +274,15 @@ come from the parts research draft, which isn't in the repo.
 | wheel rim | 2 | PETG | hub face down | 0.2 mm, 3 walls, 20% |
 | tyre | 2 | TPU 95A | on its side | 0.2 mm, 3 walls, 15% gyroid, slow (≤ 40 mm/s) |
 | tray, shelf, sling, driver mount, arm servo mounts, skid | 1 each / 2 | PETG | flat | 0.2 mm, 3 walls, 20% |
-| dock pad, cradles, mast, keys | 1 / 2 / 1 / 6 | PETG | flat | 0.24 mm, 3 walls, 15% |
+| dock pad, lanes, keys | 1 / 2 / 6 | PETG | flat | 0.24 mm, 3 walls, 15% |
+| dock tower | 1 | PETG | upright, bay opening down | 0.24 mm, 3 walls, 15%; the 20° lean needs no supports |
 
 Heat-set inserts go in at 230 °C after printing. The bearing bores are nominal +0.05 mm on radius. Print one end
 cap first and adjust `BEARING_FIT` in `params.py` to your printer.
 
 Fit report (`uv run python build.py`, current parameters): all 36 distinct printed parts fit. The largest are
 the drum halves (236 × 150 × 118), the end caps (229.6 × 229.6 × 22), the arms (210 × 210 diagonal), and the dock
-cradles (215 × 100 × 40), all against a 250 mm per-axis limit.
+pad (245 × 200 × 6), all against a 250 mm per-axis limit.
 
 ## Open questions
 
