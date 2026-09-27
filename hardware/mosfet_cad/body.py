@@ -16,6 +16,7 @@ from .params import (
     ARM_T,
     ARM_W,
     ARM_Y0,
+    BATTERY,
     BEARING_FIT,
     BEARING_OD,
     BEARING_W,
@@ -54,8 +55,13 @@ CENTRE_DIST = GEAR_M * (GEAR_N + PINION_N) / 2 + 0.5  # + printed-gear backlash
 PIN_X = CENTRE_DIST * math.cos(math.radians(PINION_DEG))
 PIN_Z = ARM_PIVOT + CENTRE_DIST * math.sin(math.radians(PINION_DEG))
 
-JETSON_X0 = -60.0  # carrier board back edge, x
-TRAY_Z = (-70.0, -66.0)
+JETSON_X0 = -65.0  # carrier board back edge, x
+# The tray sits on the battery: its bottom 2 mm over the pack's wrap. Everything on it moved up 27 mm for the 4S6P pack,
+# as far as the shelf can go: the Jetson's heatsink 8 mm under the shelf, the shelf 0.9 mm under the arm servo mounts.
+TRAY_Z = (-43.0, -39.0)
+TRAY_X = (-67.0, 103.0)
+TRAY_TABS = (-40.0, 25.0)  # x of the tabs that bolt the tray to the end caps
+TAB_Z = TRAY_Z[1] + 9  # tab bolt height
 # Stalk servo pod, left side: (x, y, bottom z). Three servos side by side along x, low and forward: clear of the
 # arm gear and bearing boss above it, the shelf behind it and the regulators and tray tabs below it. Its flange
 # sits on the end cap's inner face.
@@ -67,7 +73,11 @@ WHEEL_Y0 = ARM_Y0 + ARM_T + 1  # wheel inner face, |y|
 WHEEL_Y1 = WHEEL_Y0 + WHEEL_W
 RIM_R = WHEEL_R - 8  # TPU tyre 8 mm thick
 
-BATTERY_BOX = ((-15.0, -45.0, -93.0), (60.0, 45.0, -70.2))
+# Driver mount: an upright plate behind the Jetson, bolted to both end caps. The MDD10A hangs on its back face, the
+# bus-servo adapter on its front face.
+DRIVER_X = (-70.0, -67.0)
+DRIVER_Z = (-50.0, 12.0)
+DRIVER_BOLTS = (-40.0, 0.0)  # z of the end-cap bolts
 
 
 def _radial(deg: float, y: float, r0: float, r1: float, rad: float):
@@ -142,7 +152,8 @@ def end_cap(side: int):
     def insert(x, z):
         return cyl((x, y_in - side, z), (x, side * (CAP_IN + 6), z), 2.0)
 
-    tools += [insert(x, -56) for x in (-40, 40)]  # tray tabs
+    tools += [insert(x, TAB_Z) for x in TRAY_TABS]  # tray tabs
+    tools += [insert(sum(DRIVER_X) / 2, z) for z in DRIVER_BOLTS]  # driver mount
     tools += [insert(POD_CENTRE[0] + dx, POD_CENTRE[2] + POD_TOP / 2) for dx in POD_FLANGE_HOLES]  # stalk pod
     tools += [insert(*p) for p in ARM_SERVO_POSTS]  # arm servo mount
     return cut(body, *tools)
@@ -158,48 +169,84 @@ def jetson_holes():
     return [(x0, y0), (x0 + hx, y0), (x0, y0 - hy), (x0 + hx, y0 - hy)]
 
 
-SHELF_POSTS = [(-40.0, 45.0), (-40.0, -45.0), (15.0, 45.0), (15.0, -45.0)]
-SLING_HOLES = [(-22.0, 40.0), (-22.0, -40.0), (66.0, 40.0), (66.0, -40.0)]
+SHELF_Z = (9.0, 12.0)
+# Shelf posts stand outside the Jetson board (|y| 45), clear of the arm gears above them. Between the front and back
+# posts, the band |y| 38-58 from the arm hubs down to the tray stays open for the motor leads (and arm packs, later).
+SHELF_POSTS = [(-22.0, 45.0), (-22.0, -45.0), (18.0, 45.0), (18.0, -45.0)]
+PACK_LEAD_SLOT = ((88.0, -40.0), (100.0, -16.0))  # tray slot over the lead bay in front of the pack
 
 
 def tray():
     z0, z1 = TRAY_Z
-    parts = [box((-86, -CAP_IN + 3, z0), (86, CAP_IN - 3, z1))]
+    parts = [box((TRAY_X[0], -CAP_IN + 3, z0), (TRAY_X[1], CAP_IN - 3, z1))]
     for s in (1, -1):
-        for x in (-40, 40):
-            parts.append(box((x - 10, s * (CAP_IN - 9), z1), (x + 10, s * (CAP_IN - 3), -46)))
+        for x in TRAY_TABS:
+            parts.append(box((x - 10, s * (CAP_IN - 9), z1), (x + 10, s * (CAP_IN - 3), z1 + 18)))
     parts += [cyl((x, y, z1), (x, y, z1 + 5), 4) for x, y in jetson_holes()]
     tools = []
     for s in (1, -1):
-        for x in (-40, 40):
-            tools.append(cyl((x, s * (CAP_IN - 12), -56), (x, s * (CAP_IN + 1), -56), 1.7))
+        for x in TRAY_TABS:
+            tools.append(cyl((x, s * (CAP_IN - 12), TAB_Z), (x, s * (CAP_IN + 1), TAB_Z), 1.7))
     tools += [cyl((x, y, z1 + 1), (x, y, z1 + 6), 1.8) for x, y in jetson_holes()]  # M2.5 inserts
-    tools += [cyl((x, y, z0 - 1), (x, y, z1 + 1), 1.7) for x, y in SHELF_POSTS + SLING_HOLES]
+    tools += [cyl((x, y, z0 - 1), (x, y, z1 + 1), 1.7) for x, y in SHELF_POSTS]
+    (sx0, sy0), (sx1, sy1) = PACK_LEAD_SLOT
+    tools.append(box((sx0, sy0, z0 - 1), (sx1, sy1, z1 + 1)))
     return cut(fuse(*parts), *tools)
 
 
 def shelf():
-    """Electronics shelf over the Jetson: Teensy 4.1, BNO085 near the drum axis, bus-servo adapter."""
-    plate = box((-48, -49, -18), (22, 49, -15))
-    posts = [cyl((x, y, TRAY_Z[1]), (x, y, -15), 5) for x, y in SHELF_POSTS]
+    """Electronics shelf over the Jetson: Teensy 4.1 and the BNO085 on the drum axis."""
+    z0, z1 = SHELF_Z
+    plate = box((-31, -38, z0), (22, 38, z1))  # the arm servo mounts' lower posts come down behind it
+    ears = []
+    for x, y in SHELF_POSTS:
+        ears.append(cyl((x, y, TRAY_Z[1]), (x, y, z1), 5.5))
+        ears.append(box((x - 5.5, min(y, math.copysign(36, y)), z0), (x + 5.5, max(y, math.copysign(36, y)), z1)))
     tools = [cyl((x, y, TRAY_Z[1] - 1), (x, y, TRAY_Z[1] + 8), 2.0) for x, y in SHELF_POSTS]
-    return cut(fuse(plate, *posts), *tools)
+    return cut(fuse(plate, *ears), *tools)
 
 
-def sling():
-    """Open-ended cradle under the tray that holds the 4S1P pack low and forward."""
-    (x0, y0, z0), (x1, y1, z1) = BATTERY_BOX
-    body = fuse(box((x0 - 3, y0 - 2, z0 - 2), (x1 + 2, y1 + 2, TRAY_Z[0])), box((-26, -48, -73), (70, 48, TRAY_Z[0])))
-    tools = [box((x0, y0 - 5, z0), (x1, y1 + 5, z1 + 0.2)), box((x0 + 10, -30, z0 - 5), (x1 - 10, 30, z0 + 1))]
-    tools += [cyl((x, y, -80), (x, y, TRAY_Z[0] + 1), 1.7) for x, y in SLING_HOLES]
+def cradle(beta: float):
+    """Curved trough on the drum's bottom that holds the 4S pack: it follows the shell, and the cells' nested layers
+    step up it. The tray above is the lid. The two skid screws come up through the shell into it (thread-forming M3),
+    which locates it, and a groove in its underside carries the charge-pad wires along y to the ends of the drum.
+    """
+    P = BATTERY
+    clr = P.wrap + 0.3
+    yw = P.width / 2 + clr
+    wall = 2.0
+    top = P.top + P.wrap
+    xs = [P.layer_box(k)[:2] for k in range(len(P.layers))]
+    x_back, x_front = min(x[0] for x in xs) - clr - wall, max(x[1] for x in xs) + clr + wall
+    shell = cyl((0, -yw - wall, 0), (0, yw + wall, 0), RI - 0.2)
+    body = shell & box((x_back, -yw - wall, -DRUM_R), (x_front, yw + wall, top))
+    tools = []
+    for k in range(len(P.layers)):
+        x0, x1, zb, _ = P.layer_box(k)
+        tools.append(box((x0 - clr, -yw, zb - clr), (x1 + clr, yw, top + 1)))  # open upward: the pack drops in
+    tools.append(box((x_back - 1, -yw - wall - 1, DRIVER_Z[0] - 1), (DRIVER_X[1] + 0.5, yw + wall + 1, top + 1)))  # MDD10A
+    tools.append(box((x_front - 4, -40, top - 20), (x_front + 1, -16, top + 1)))  # pack leads out to the lead bay
+    for y in (-48.0, 48.0):  # skid screws
+        tools.append(_radial(beta, y, RI - 7, DRUM_R + 1, 1.25))
+    r = RI - 0.2
+    groove = box((-2.0, -yw - wall - 1, -r - 1), (2.0, yw + wall + 1, -r + 2.5))  # pad wires, along y
+    tools.append(groove.moved(rot_xz(beta + 90)))
     return cut(body, *tools)
 
 
 def driver_mount():
-    """Upright plate at the back of the tray for the Cytron MDD10A (M3 standoffs, pattern to suit the board)."""
-    body = fuse(box((-84, -44, TRAY_Z[1]), (-81, 44, 0)), box((-84, -44, TRAY_Z[1]), (-70, 44, TRAY_Z[1] + 3)))
-    tools = [cyl((-85, y, z), (-80, y, z), 1.6) for y in (-38, 38) for z in (-58, -8)]
-    return cut(body, *tools)
+    """Upright plate behind the Jetson, bolted to both end caps. The Cytron MDD10A hangs on its back face (M3
+    standoffs, pattern to suit the board), the bus-servo adapter on its front face."""
+    (x0, x1), (z0, z1) = DRIVER_X, DRIVER_Z
+    xm = (x0 + x1) / 2
+    parts = [box((x0, -CAP_IN + 5, z0), (x1, CAP_IN - 5, z1))]
+    for s in (1, -1):
+        for z in DRIVER_BOLTS:
+            parts.append(box((x0 - 4, s * (CAP_IN - 8), z - 6), (x1, s * CAP_IN, z + 6)))
+    tools = [cyl((xm, s * (CAP_IN - 12), z), (xm, s * (CAP_IN + 1), z), 1.7) for s in (1, -1) for z in DRIVER_BOLTS]
+    tools += [cyl((x0 - 1, y, z), (x1 + 1, y, z), 1.6) for y in (-38, 38) for z in (z0 + 4, z1 - 4)]  # MDD10A
+    tools += [cyl((x0 - 1, y, z), (x1 + 1, y, z), 1.6) for y in (28, 55) for z in (-27, -3)]  # bus-servo adapter
+    return cut(fuse(*parts), *tools)
 
 
 # --- skid ----------------------------------------------------------------------------------------------------------
@@ -268,7 +315,8 @@ def pinion(side: int):
     return cut(g, *tools)
 
 
-ARM_SERVO_POSTS = [(PIN_X - 42, PIN_Z), (PIN_X + 8, PIN_Z - 24)]
+# The lower post sits behind the servo, clear of the Jetson's heatsink and the shelf under it.
+ARM_SERVO_POSTS = [(PIN_X - 42, PIN_Z), (PIN_X - 12, PIN_Z - 21)]
 
 
 def arm_servo_box(side: int):
@@ -286,7 +334,7 @@ def arm_servo_mount(side: int):
         box((x0 - 3, side * 20, PIN_Z - SERVO_W / 2 - 3), (x1 + 3, side * 40, PIN_Z + SERVO_W / 2 + 3)),
         *[cyl((x, side * 30, z), (x, side * CAP_IN, z), 5) for x, z in ARM_SERVO_POSTS],
         box((PIN_X - 42, side * 20, PIN_Z - 3), (x0 - 2, side * 40, PIN_Z + 3)),
-        box((PIN_X + 5, side * 20, PIN_Z - 24), (PIN_X + 11, side * 40, PIN_Z - SERVO_W / 2 - 2)),
+        box((PIN_X - 15, side * 20, PIN_Z - 21), (PIN_X - 9, side * 40, PIN_Z - SERVO_W / 2 - 2)),
     )
     tools = [box((x0 - 0.2, side * 15, PIN_Z - SERVO_W / 2 - 0.2), (x1 + 0.2, side * 45, PIN_Z + SERVO_W / 2 + 0.2))]
     tools += [cyl((x, side * 25, z), (x, side * (CAP_IN + 1), z), 1.7) for x, z in ARM_SERVO_POSTS]

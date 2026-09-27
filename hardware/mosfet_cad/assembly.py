@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from build123d import Location, Pos, Rot
+from build123d import Compound, Location, Pos, Rot
 
 from . import body as B
 from . import part as C
@@ -16,6 +16,7 @@ from .params import (
     BEARING_ID,
     BEARING_OD,
     BEARING_W,
+    BMS,
     DRUM_L,
     EYE,
     JETSON_BOARD,
@@ -34,23 +35,31 @@ def _ref(name: str, shape, color=C.REF) -> Part:
     return Part(f"REF {name}", shape, color, printed=False)
 
 
+def battery_pack():
+    """The 4S pack's cells (reference), one cylinder each, lying along x."""
+    r = BATTERY.cell.d / 2
+    return Compound(children=[cyl((x0 + 0.75, y, z), (x1 - 0.75, y, z), r) for x0, x1, y, z in BATTERY.cells()])
+
+
 def electronics() -> list[Part]:
     bx, by = JETSON_BOARD
     x0, z0 = B.JETSON_X0, B.TRAY_Z[1] + 5
-    (b0, b1) = B.BATTERY_BOX
+    t = B.TRAY_Z[1]  # tray top
+    dx0, dx1 = B.DRIVER_X
     return [
         _ref(
             "Jetson Orin Nano Super dev kit",
             box((x0, -by / 2, z0), (x0 + bx, by / 2, z0 + 1.6)).fuse(box((x0 + 15, -35, z0 + 1.6), (x0 + 85, 35, z0 + JETSON_H))),
         ),
-        _ref(f"4S1P 21700 pack {BATTERY[1]:.0f}x{BATTERY[0]:.0f}x{BATTERY[2]}", box(b0, b1)),
-        _ref("Cytron MDD10A", box((-81, -MDD10A[0] / 2, -62), (-65, MDD10A[0] / 2, -62 + MDD10A[1]))),
-        _ref("Pololu D24V150F12 (12 V servo bus)", box((52, -56, -66), (84, -13, -55))),
-        _ref("Pololu D36V50F5 (5 V logic)", box((55, -10, -66), (80.4, 15.4, -58))),
-        _ref("CC/CV charge module", box((52, 18, -66), (75, 57, -48))),
-        _ref("Teensy 4.1", box((-40, 5, -15), (21, 23, -11))),
-        _ref("BNO085", box((-12.8, -30, -15), (12.8, -7.3, -10.4))),
-        _ref("Waveshare bus servo adapter", box((-46, -37, -15), (-14, -4, -5))),
+        _ref(BATTERY.name, battery_pack(), (0.2, 0.35, 0.75)),
+        _ref("4S BMS", box((40, 16, t), (40 + BMS[0], 16 + BMS[1], t + BMS[2]))),
+        _ref("Cytron MDD10A", box((dx0 - 16, -MDD10A[0] / 2, B.DRIVER_Z[0]), (dx0, MDD10A[0] / 2, B.DRIVER_Z[0] + MDD10A[1]))),
+        _ref("Waveshare bus servo adapter", box((dx1, 25, -31), (dx1 + 10, 58, 1))),
+        _ref("Pololu D24V150F12 (12 V servo bus)", box((38, -62, t), (81, -30, t + 11))),
+        _ref("Pololu D36V50F5 (5 V logic)", box((38, -28, t), (63.4, -2.6, t + 8))),
+        _ref("CC/CV charge module", box((64, -11.5, t), (103, 11.5, t + 18))),
+        _ref("Teensy 4.1", box((-31, -30.5, B.SHELF_Z[1]), (-13, 30.5, B.SHELF_Z[1] + 4))),
+        _ref("BNO085", box((-10.8, -11.35, B.SHELF_Z[1]), (14.8, 11.35, B.SHELF_Z[1] + 4.6))),
     ]
 
 
@@ -111,7 +120,7 @@ def bot(
         Part("skid", B.skid(beta), C.INNER, print_pose=Rot(0, -(beta + 90), 0) * Rot(180, 0, 0)),
         Part("tray", B.tray(), C.INNER),
         Part("electronics shelf", B.shelf(), C.INNER),
-        Part("battery sling", B.sling(), C.INNER),
+        Part("battery cradle", B.cradle(beta), C.INNER),
         Part("driver mount", B.driver_mount(), C.INNER),
     ]
     if refs:

@@ -63,7 +63,6 @@ JETSON_BOARD = (100.0, 79.0)  # carrier PCB, NVIDIA SP-11324-001
 JETSON_HOLES = (86.0, 58.0)  # UNVERIFIED (scaled from the drawing)
 JETSON_HOLE_INSET = 4.0  # UNVERIFIED: hole centres from the left and top board edges
 JETSON_H = 35.0  # kit height incl. heatsink/fan
-BATTERY = (75.0, 90.0, 22.8)  # Keeppower 4S1P 21700 6000 mAh w/ BMS, x, y, z (90 x 75 x 22.8)
 MDD10A = (84.5, 62.0, 15.0)
 POGO_D = 3.0  # UNVERIFIED: Mill-Max 0873 barrel press-fit diameter
 POGO_PROUD = 1.5
@@ -234,6 +233,113 @@ class EyeSpec:
         return self.pocket_r + self.cam_w / 2 + 1
 
 
+@dataclass(frozen=True)
+class CellSpec:
+    """One cylindrical Li-ion cell, from its datasheet. Diameter and length are the maximums: the pockets fit those."""
+
+    name: str
+    d: float
+    length: float
+    ah: float
+    volts: float  # nominal
+    grams: float
+    amps: float  # max continuous discharge
+
+    @property
+    def wh(self) -> float:
+        return self.ah * self.volts
+
+
+# UNVERIFIED dimensions and mass: check the datasheet of the cells you buy. Any 5 Ah 21700 no bigger than 21.3 x 70.9
+# drops in (Samsung 50E, Molicel P50B if its diameter measures under the pitch).
+SAMSUNG_50S = CellSpec("Samsung INR21700-50S", 21.25, 70.8, 5.0, 3.6, 69.0, 25.0)
+
+
+@dataclass(frozen=True)
+class PackSpec:
+    """A custom 4S Li-ion pack, spot-welded, lying low in the drum in nested layers that follow its curved bottom.
+
+    The cells lie along x (fore-aft). Each layer is a row of `per_row` cells across y; the next layer up shifts half a
+    pitch and nests into the grooves, so layers stack `row_pitch` apart. `layers` gives, bottom up, how many cells sit
+    end to end along x in each layer and how far forward that layer is shifted. The bottom of the lowest layer is `z0`
+    (drum frame). The bottom-layer slots listed in `empty` (counted across y) carry no cell.
+    """
+
+    cell: CellSpec = SAMSUNG_50S
+    s: int = 4
+    p: int = 6
+    pitch: float = 21.4  # cell centres across a row: glued, fishpaper rings on the + ends
+    ends: float = 1.5  # nickel strip (2 x 0.15) and the end insulators, added to the cell length
+    per_row: int = 5
+    z0: float = -104.0
+    layers: tuple[tuple[int, float], ...] = ((1, 4.0), (2, 0.0), (2, 12.0))
+    empty: tuple[int, ...] = (2,)  # the middle one: keeps the pack centred in y; the BMS thermistor goes there
+    wrap: float = 0.5  # PVC heat-shrink and fishpaper outside the cells
+    extra_g: float = 130.0  # nickel strip, fishpaper, wrap, BMS, leads and XT60: UNVERIFIED
+
+    @property
+    def slot_len(self) -> float:
+        return self.cell.length + self.ends
+
+    @property
+    def row_pitch(self) -> float:
+        return self.pitch * math.sqrt(3) / 2
+
+    @property
+    def width(self) -> float:
+        """Across y, every layer included: the rows alternate a quarter pitch either side of the centre."""
+        return (self.per_row + 0.5) * self.pitch
+
+    def layer_box(self, k: int) -> tuple[float, float, float, float]:
+        """x0, x1, z0, z1 of layer k's cells (no wrap)."""
+        n, off = self.layers[k]
+        zb = self.z0 + k * self.row_pitch
+        return off - n * self.slot_len / 2, off + n * self.slot_len / 2, zb, zb + self.pitch
+
+    @property
+    def top(self) -> float:
+        return max(self.layer_box(k)[3] for k in range(len(self.layers)))
+
+    def slots(self) -> list[tuple[float, float, float, float]]:
+        """Every cell slot: x0, x1, y, z of its axis."""
+        out = []
+        for k, (n, _) in enumerate(self.layers):
+            x0, _, zb, _ = self.layer_box(k)
+            shift = self.pitch / 4 * (1 if k % 2 else -1)
+            for j in range(n):
+                for i in range(self.per_row):
+                    y = (i - (self.per_row - 1) / 2) * self.pitch + shift
+                    out.append((x0 + j * self.slot_len, x0 + (j + 1) * self.slot_len, y, zb + self.pitch / 2))
+        return out
+
+    def cells(self) -> list[tuple[float, float, float, float]]:
+        slots = self.slots()
+        n0 = self.layers[0][0] * self.per_row
+        full = [c for i, c in enumerate(slots[:n0]) if i % self.per_row not in self.empty] + slots[n0:]
+        assert len(full) == self.s * self.p, f"{len(full)} slots for a {self.s}S{self.p}P pack"
+        return full
+
+    @property
+    def ah(self) -> float:
+        return self.p * self.cell.ah
+
+    @property
+    def wh(self) -> float:
+        return self.s * self.p * self.cell.wh
+
+    @property
+    def kg(self) -> float:
+        return (self.s * self.p * self.cell.grams + self.extra_g) / 1000
+
+    @property
+    def name(self) -> str:
+        return f"{self.s}S{self.p}P {self.cell.name.split()[-1]} {self.ah:.0f} Ah {self.wh:.0f} Wh"
+
+
+# The biggest 4S pack that fits under the electronics tray: 4S6P Samsung 50S, 30 Ah, 432 Wh, about 1.8 kg.
+# 25 slots in three nested layers (5 + 10 + 10), the middle one of the bottom layer empty. Top (with wrap) at z = -45.
+BATTERY = PackSpec()
+BMS = (60.0, 40.0, 12.0)  # UNVERIFIED envelope: 4S Li-ion BMS, >= 40 A continuous, with balancing
 STALK = StalkSpec()
 EYE = EyeSpec()
 
